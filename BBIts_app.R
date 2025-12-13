@@ -8,6 +8,7 @@ library(survminer)
 library(glmnet)
 library(shinythemes)
 library(DT)
+library(dplyr)
 
 # UI
 ui <- fluidPage(
@@ -29,16 +30,21 @@ ui <- fluidPage(
       actionButton("train", "Entrenar model"),
       hr(),
       h4("Introdueix un cas clínic"),
-      selectInput('Tipo_hist_in','Tipus histològic', choices = c('Endometrioide','Seroso','Claro')),
-      selectInput('Grado_in','Grau (biopsia)', choices = c('G1','G2','G3')),
-      selectInput('Infiltracion_in','Infiltració miometrial', choices = c('<50%','>=50%')),
-      numericInput('CA125_in','CA125', value = 20, min = 0),
-      selectInput('Metastasis_in','Metàstasi a distància', choices = c(0,1)),
-      selectInput('Riesgo_preIQ_in','Risc preIQ', choices = c('Bajo','Intermedio','Alto')),
-      numericInput('Edad_in','Edat', value = 65, min = 18),
-      selectInput('PR_in','Receptor Progesterona', choices = c('Positivo','Negativo')),
-      selectInput('ER_in','Receptor Estrogen', choices = c('Positivo','Negativo')),
-      selectInput('Beta_in','Betacatenina', choices = c('Positivo','Negativo')),
+      selectInput('Grado_in','Grado', choices = c('Bajo','Alto')),
+      selectInput('libre_enferm_in','Libre de enfermedad', choices = c('Si','No','Desconocido')),
+      selectInput('beta_cateninap_in','Beta catenina', choices = c('0','1','2')),
+      selectInput('mlh1_in','MLH1', choices = c('0','2')),
+      selectInput('grupo_riesgo_in','Grupo de riesgo definitivo', 
+                  choices = c('Bajo','Intermedio','Intermedio_alto','Alto','Avanzados')),
+      selectInput('Tributaria_in','Tributaria a Radioterapia', choices = c('Si','No')),
+      selectInput('afectacion_linf_in','Afectación linfática', choices = c('Si','No')),
+      selectInput('grado_histologi_in','Grado histológico', choices = c('Bajo','Alto')),
+      selectInput('AP_centinela_in','AP centinela pélvico', 
+                  choices = c('pN0','pN0(i+)','pN1(mi)','pN1','pNx')),
+      selectInput('AP_ganPelv_in','AP ganglios pélvicos', 
+                  choices = c('Negativo','Cels_aisladas','Macrometastasis')),
+      selectInput('tipo_histologico_in','Tipo histológico', 
+                  choices = c('1','2','3','4','5','7','8','9','10','12','88')),
       actionButton("predict_btn", "Calcular probabilitat")
     ),
     mainPanel(
@@ -56,7 +62,7 @@ ui <- fluidPage(
 
 # Server
 server <- function(input, output, session) {
-  rv <- reactiveValues(data = NULL, model = NULL)
+  rv <- reactiveValues(data = NULL, model = NULL, empirical_table = NULL)
   
   # Leer Excel y actualizar hoja
   observeEvent(input$file, {
@@ -70,6 +76,10 @@ server <- function(input, output, session) {
     req(input$file, input$sheet)
     df <- read_excel(input$file$datapath, sheet = input$sheet)
     rv$data <- as.data.frame(df)
+    
+    # Aquí deberías construir empirical_summary_wide a partir de rv$data
+    # Por simplicidad asumimos que ya lo tienes preparado en tu entorno
+    rv$empirical_table <- empirical_summary_wide
   })
   
   output$table <- renderDT({
@@ -113,39 +123,51 @@ server <- function(input, output, session) {
     ggsurvplot(survfit(rv$model), conf.int=TRUE, risk.table=TRUE, ggtheme=theme_minimal())
   })
   
+  # Función para calcular probabilidades de cluster
+  score_new_patient <- function(new_patient, empirical_table, cluster_cols) {
+    scores <- empirical_table %>%
+      filter(variable %in% names(new_patient)) %>%
+      rowwise() %>%
+      mutate(match = as.character(new_patient[[variable]]) == value) %>%
+      ungroup() %>%
+      filter(match)
+    
+    result <- scores %>%
+      summarise(across(all_of(cluster_cols), ~ mean(.x, na.rm = TRUE)))
+    
+    result <- result %>%
+      mutate(total = rowSums(across(all_of(cluster_cols))),
+             across(all_of(cluster_cols), ~ round(100 * .x / total, 1))) %>%
+      select(-total)
+    
+    return(result)
+  }
+  
   # Predicción paciente
   observeEvent(input$predict_btn, {
-    req(rv$model)
-    newcase <- data.frame(
-      Tipo_hist_biopsia = input$Tipo_hist_in,
-      Grado_biopsia = input$Grado_in,
-      Infiltracion_miometrial = input$Infiltracion_in,
-      CA125 = input$CA125_in,
-      Metastasis_distancia = input$Metastasis_in,
-      Riesgo_preIQ = input$Riesgo_preIQ_in,
-      Edad = input$Edad_in,
-      PR = input$PR_in,
-      ER = input$ER_in,
-      Betacatenina = input$Beta_in
+    new_patient <- data.frame(
+      Grado = input$Grado_in,
+      libre_enferm = input$libre_enferm_in,
+      beta_cateninap = input$beta_cateninap_in,
+      mlh1 = input$mlh1_in,
+      grupo_de_riesgo_definitivo = input$grupo_riesgo_in,
+      Tributaria_a_Radioterapia = input$Tributaria_in,
+      afectacion_linf = input$afectacion_linf_in,
+      grado_histologi = input$grado_histologi_in,
+      AP_centinela_pelvico = input$AP_centinela_in,
+      AP_ganPelv = input$AP_ganPelv_in,
+      tipo_histologico = input$tipo_histologico_in,
+      stringsAsFactors = FALSE
     )
     
-    for(v in names(newcase)) if(is.character(newcase[[v]])) newcase[[v]] <- as.factor(newcase[[v]])
+    cluster_columns <- c("Alto riesgo","Buen pronóstico","Mixto")
     
-    # Predecir riesgo relativo
-    lp <- predict(rv$model, newdata = newcase, type="lp")
-    # Baseline survival a 1,3,5 años (aprox en días)
-    base <- basehaz(rv$model, centered=FALSE)
-    S1 <- exp(-approx(base$time, base$hazard, xout=365)$y)
-    S3 <- exp(-approx(base$time, base$hazard, xout=365*3)$y)
-    S5 <- exp(-approx(base$time, base$hazard, xout=365*5)$y)
-    
-    # Ajustar con el linear predictor
-    prob1 <- 1 - S1^exp(lp)
-    prob3 <- 1 - S3^exp(lp)
-    prob5 <- 1 - S5^exp(lp)
+    result <- score_new_patient(new_patient, rv$empirical_table, cluster_columns)
     
     output$prediction_text <- renderPrint({
-      cat(sprintf("Probabilidad de recidiva:\n1 año: %.1f%%\n3 años: %.1f%%\n5 años: %.1f%%", prob1*100, prob3*100, prob5*100))
+      cat("Probabilidad de pertenencia a clusters:\n",
+          sprintf("Alto riesgo: %.1f%%\nBuen pronóstico: %.1f%%\nMixto: %.1f%%",
+                  result$`Alto riesgo`, result$`Buen pronóstico`, result$Mixto))
     })
   })
 }
