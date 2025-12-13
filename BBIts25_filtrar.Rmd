@@ -1,0 +1,408 @@
+---
+title: "BBIts25_ filtrar"
+author: "Ainhoa López"
+date: "2025-12-07"
+output: html_document
+---
+
+
+```{r}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(car)
+  library(corrplot)
+  library(broom)
+  library(effects)
+  library(pROC)
+  library(dplyr)
+  library(forcats)
+  library(logistf)
+})
+```
+
+
+
+```{r}
+data <- read_excel("data_hack.xlsx")
+data
+```
+
+
+```{r}
+
+library(dplyr)
+
+columnas_a_conservar <- c(
+  "codigo_participante",
+  "recidiva",
+  "recidiva_exitus",
+  "diferencia_dias_reci_exit",
+  "causa_muerte",
+  "f_diag",
+  "fecha_de_recidi",
+  "f_muerte",
+  "Ultima_fecha",
+  "edad",
+  "imc",
+  "tipo_histologico",
+  "Grado",
+  "valor_de_ca125",
+  "ecotv_infiltsub",
+  "metasta_distan",
+  "libre_enferm",
+  "numero_de_recid",
+  "recid_super_1",
+  "dx_recidiva",
+  "num_recidiva",
+  "loc_recidiva_r01",
+  "loc_recidiva_r03",
+  "loc_recidiva_r04",
+  "loc_recidiva_r05",
+  "loc_recidiva_r06",
+  "tto_recidiva",
+  "Tt_recidiva_qx",
+  "otro_ttIQ_recid",
+  "Reseccion_macroscopica_complet",
+  "Tratamiento_RT",
+  "Tratamiento_sistemico",
+  "estado",
+  "tto_1_quirugico",
+  "fecha_qx",
+  "recep_est_porcent",
+  "rece_de_Ppor",
+  "p53_molecular",
+  "p53_ihq",
+  "mut_pole",
+  "beta_cateninap",
+  "msh2",
+  "msh6",
+  "pms2",
+  "mlh1",
+  "estudio_genetico_r01",
+  "estudio_genetico_r02",
+  "estudio_genetico_r03",
+  "estudio_genetico_r04",
+  "estudio_genetico_r05",
+  "estudio_genetico_r06",
+  "Tratamiento_sistemico_realizad",
+  "grupo_de_riesgo_definitivo",
+  "Tributaria_a_Radioterapia",
+  "asa",
+  "histo_defin",
+  "afectacion_linf",
+  "grado_histologi",
+  "tamano_tumoral",
+  "AP_centinela_pelvico",
+  "AP_ganPelv"
+)
+
+
+
+
+```
+
+
+```{r}
+
+data_reducido <- data %>% select(all_of(columnas_a_conservar))
+
+
+head(data_reducido)
+
+
+```
+
+```{r}
+data_limpia <- data_reducido %>%
+  select(where(~ mean(is.na(.)) < 0.5)) 
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+
+```{r}
+sapply(data_limpia, class)
+nrow(data_limpia); ncol(data_limpia)
+
+# Elegir outcome
+data_rec <- data_limpia %>%
+  mutate(recidiva_bin = ifelse(recidiva %in% c(0,1), recidiva, NA)) %>%
+  filter(!is.na(recidiva_bin))
+outcome_var <- "recidiva_bin"
+
+#### Juntar variables con menos de 5 casos para no tener overfitting
+data_rec <- data_rec %>%
+  mutate(tipo_histologico_collapsed = fct_lump_min(factor(tipo_histologico), min = 5))
+
+
+data_rec <- data_rec %>%
+  mutate(
+    recidiva_bin = factor(recidiva_bin, levels = c(0,1), labels = c("NoRecidiva","Recidiva")),
+    Grado = factor(Grado, levels = c(1,2), labels = c("Bajo","Alto")),
+    grado_histologi = factor(grado_histologi, levels = c(1,2), labels = c("Bajo","Alto")),
+    libre_enferm = factor(libre_enferm, levels = c(0,1,2), labels = c("No","Si","Desconocido")),
+    metasta_distan = factor(metasta_distan, levels = c(0,1), labels = c("No","Si")),
+    Tratamiento_RT = factor(Tratamiento_RT, levels = c(0,1), labels = c("No","Si")),
+    Tratamiento_sistemico = factor(Tratamiento_sistemico, levels = c(0,1), labels = c("No","Si")),
+    Tributaria_a_Radioterapia = factor(Tributaria_a_Radioterapia, levels = c(0,1), labels = c("No","Si")),
+    asa = factor(asa, levels = c(0,1,2,3,4,5,6),
+                 labels = c("ASA1","ASA2","ASA3","ASA4","ASA5","ASA6","Desconocido")),
+    afectacion_linf = factor(afectacion_linf, levels = c(0,1), labels = c("No","Si")),
+    AP_centinela_pelvico = factor(AP_centinela_pelvico, levels = c(0,1,2,3,4),
+                                  labels = c("pN0","pN0(i+)","pN1(mi)","pN1","pNx")),
+    AP_ganPelv = factor(AP_ganPelv, levels = c(0,1,2,3),
+                        labels = c("Negativo","Cels_aisladas","Micrometastasis","Macrometastasis")),
+    grupo_de_riesgo_definitivo = factor(grupo_de_riesgo_definitivo, levels = c(1,2,3,4,5),
+                                        labels = c("Bajo","Intermedio","Intermedio_alto","Alto","Avanzados"))
+  )
+
+tab_out <- table(data_rec[[outcome_var]])
+print(tab_out)
+print(round(prop.table(tab_out)*100,2))
+
+#### Plots 
+ggplot(data_rec, aes_string(x = outcome_var, fill = outcome_var)) +
+  geom_bar() + ggtitle("Outcome distribution")
+
+ggplot(data_rec, aes(x = tipo_histologico_collapsed, fill = factor(recidiva_bin))) +
+  geom_bar(position = "dodge") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Collapsed histology vs outcome")
+
+#### Quitar los que no nos interesan 
+exclude <- c("codigo_participante","f_diag","Ultima_fecha","fecha_qx","tt_o_f_ini","tt_o_f_fin",
+             "recidiva","estado","recidiva_exitus","diferencia_dias_reci_exit",
+             "visita_control","fecha_de_recidi","f_muerte","causa_muerte")
+
+candidate_vars <- setdiff(names(data_rec), c(exclude, outcome_var))
+
+# Filtrar posibles predictores
+candidate_vars <- candidate_vars[sapply(data_rec[candidate_vars], function(x) length(unique(na.omit(x))) > 1)]
+
+#### Univariate logistic regression
+univ_results <- list()
+for (v in candidate_vars) {
+  f <- as.formula(paste(outcome_var, "~", v))
+  m <- try(glm(f, data = data_rec, family = "binomial"), silent = TRUE)
+  if (inherits(m, "try-error")) next
+  sm <- summary(m)
+  pvals <- coef(sm)[, "Pr(>|z|)"]
+  p_test <- if (length(pvals) > 1) min(pvals[-1], na.rm = TRUE) else pvals[1]
+  univ_results[[v]] <- list(p = p_test)
+  cat("Univariate:", v, "p(min across levels) =", signif(p_test, 4), "\n")
+}
+
+alpha <- 0.05
+significant_predictors <- names(Filter(function(x) !is.na(x$p) && x$p < alpha, univ_results))
+cat("Significant predictors:", paste(significant_predictors, collapse = ", "), "\n")
+
+
+```
+
+```{r, warning=FALSE}
+#### Modelos multivariables con predictors con más de 1 posible outcome
+sig_vars <- significant_predictors[
+  sapply(data_rec[significant_predictors], function(x) length(unique(na.omit(x))) > 1)
+]
+
+# Construir la fórmula solo con estos predictors
+sig_formula <- as.formula(paste(outcome_var, "~", paste(sig_vars, collapse = " + ")))
+
+# Crear el modelo
+sig_model <- glm(sig_formula, data = data_rec, family = "binomial")
+summary(sig_model)
+
+# Firth logistic regression
+firth_model <- logistf(sig_formula, data = data_rec,
+                       control = logistf.control(maxit = 200, maxstep = 0.5))
+summary(firth_model)
+
+
+```
+
+```{r, warning=FALSE}
+# Elegimos predictors basados en relevancia clínica, con muchos datos y no redundantes:
+
+core_vars <- c(
+  "Grado",
+  "afectacion_linf",
+  "grupo_de_riesgo_definitivo",
+  "tipo_histologico_collapsed",
+  "beta_cateninap"
+)
+
+data_core <- data_rec %>%
+  select(recidiva_bin, all_of(core_vars)) %>%
+  na.omit()
+
+nrow(data_core)
+table(data_core$recidiva_bin)
+
+# Fórmula del modelo
+core_formula <- as.formula(
+  paste("recidiva_bin ~", paste(core_vars, collapse = " + "))
+)
+
+# Standard logistic regression (referencia)
+core_model <- glm(core_formula, data = data_core, family = binomial)
+summary(core_model)
+
+# Firth logistic regression (modelo final)
+core_model_firth <- logistf(
+  core_formula,
+  data = data_core,
+  control = logistf.control(maxit = 300)
+)
+
+summary(core_model_firth)
+
+
+# Odds ratios
+firth_sum <- summary(core_model_firth)
+
+# Tabla con los OR
+or_table <- data.frame(
+  Variable = names(core_model_firth$coefficients),
+  OR = exp(core_model_firth$coefficients),
+  CI_low = exp(core_model_firth$ci.lower),
+  CI_high = exp(core_model_firth$ci.upper),
+  p_value = core_model_firth$prob,
+  row.names = NULL
+)
+
+or_table
+
+
+# Discriminación del modelo
+# Predicted probabilities
+pred_prob <- predict(core_model_firth, type = "response")
+
+# ROC
+roc_obj <- suppressMessages(
+  roc(
+    response = as.numeric(data_core$recidiva_bin == "Recidiva"),
+    predictor = pred_prob,
+    levels = c(0, 1),
+    direction = "<"
+  )
+)
+
+plot(roc_obj, main = "ROC – NSMP Recurrence Model")
+auc(roc_obj)
+
+
+# Estratificación de riesgo
+data_core$risk_group <- cut(
+  pred_prob,
+  breaks = c(0, 0.2, 0.4, 1),
+  labels = c("Low", "Intermediate", "High")
+)
+
+table(data_core$risk_group, data_core$recidiva_bin)
+
+ggplot(data_core, aes(x = risk_group, fill = recidiva_bin)) +
+  geom_bar(position = "fill") +
+  ylab("Proportion") +
+  ggtitle("Recurrence risk by predicted risk group")
+
+
+# Bootstrap AUC
+set.seed(123)
+
+auc_boot <- replicate(200, {
+  idx <- sample(seq_len(nrow(data_core)), replace = TRUE)
+
+  m <- suppressWarnings(
+    logistf(
+      core_formula,
+      data = data_core[idx, ],
+      control = logistf.control(maxit = 300)
+    )
+  )
+
+  p <- predict(m, newdata = data_core[idx, ], type = "response")
+
+  suppressMessages(
+    auc(
+      roc(
+        as.numeric(data_core$recidiva_bin[idx] == "Recidiva"),
+        p,
+        levels = c(0, 1),
+        direction = "<"
+      )
+    )
+  )
+})
+
+mean(auc_boot)
+quantile(auc_boot, c(0.025, 0.975))
+
+```
+
+```{r}
+#### Cross-validated ROC/AUC 
+
+set.seed(42)
+
+core_vars <- c("Grado","afectacion_linf","grupo_de_riesgo_definitivo",
+               "tipo_histologico_collapsed","beta_cateninap")
+
+# Complete-case dataset
+data_core <- data_rec %>%
+  select(recidiva_bin, all_of(core_vars)) %>%
+  na.omit()
+
+# Ajustar los valores de la dataset como al principio
+data_core <- data_core %>%
+  mutate(
+    recidiva_bin = factor(recidiva_bin, levels = c("NoRecidiva","Recidiva")),
+    Grado = factor(Grado, levels = c("Bajo","Alto")),
+    afectacion_linf = factor(afectacion_linf, levels = c("No","Si")),
+    grupo_de_riesgo_definitivo = factor(grupo_de_riesgo_definitivo,
+                                        levels = c("Bajo","Intermedio","Intermedio_alto","Alto","Avanzados")),
+    tipo_histologico_collapsed = factor(tipo_histologico_collapsed,
+                                        levels = c("1","2","Other")), # adjust to your actual collapsed levels
+    beta_cateninap = factor(beta_cateninap, levels = c("0","1","2","NA")) # adjust to your coding
+  )
+
+# Folds estratificados
+K <- 5
+idx_no  <- which(data_core$recidiva_bin == "NoRecidiva")
+idx_yes <- which(data_core$recidiva_bin == "Recidiva")
+
+folds_no  <- split(sample(idx_no),  rep(1:K, length.out = length(idx_no)))
+folds_yes <- split(sample(idx_yes), rep(1:K, length.out = length(idx_yes)))
+folds <- lapply(1:K, function(k) sort(c(folds_no[[k]], folds_yes[[k]])))
+
+# Predicciones out-of-fold
+oof_pred <- rep(NA_real_, nrow(data_core))
+
+for (k in 1:K) {
+  test_idx <- folds[[k]]
+  train_idx <- setdiff(seq_len(nrow(data_core)), test_idx)
+  
+  train_dat <- data_core[train_idx, , drop = FALSE]
+  test_dat  <- data_core[test_idx,  , drop = FALSE]
+  
+  fml <- as.formula(paste("recidiva_bin ~", paste(core_vars, collapse = " + ")))
+  fit_k <- logistf(fml, data = train_dat,
+                   control = logistf.control(maxit = 200, maxstep = 0.5))
+  
+  oof_pred[test_idx] <- predict(fit_k, newdata = test_dat, type = "response")
+}
+
+# Compute CV ROC
+roc_cv <- roc(data_core$recidiva_bin, oof_pred,
+              levels = c("NoRecidiva","Recidiva"), direction = "<")
+plot(roc_cv, col = "blue", main = "ROC curve (Firth, 5-fold CV)")
+cat("Cross-validated AUC =", round(auc(roc_cv), 3), "\n")
+```
+
+
+
