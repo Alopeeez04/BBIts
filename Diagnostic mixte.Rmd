@@ -1,0 +1,958 @@
+---
+title: "Parte 2"
+output: html_document
+date: "2025-12-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+library(readr)
+library(readxl)
+library(dplyr)
+library(janitor)
+data <-  read_excel("C:/Users/user/Downloads/IQ_Cancer_Endometrio_merged_NMSP.xlsx")
+
+columnas_diagnostico <- c(
+  "edad",
+  "imc",
+  "tipo_histologico",
+  "histo_defin",
+  "Grado",
+  "grado_histologi",
+  "tamano_tumoral",
+  "ecotv_infiltsub",
+  "metasta_distan",
+  "afectacion_linf",
+  "AP_centinela_pelvico",
+  "AP_ganPelv",
+  "p53_molecular",
+  "p53_ihq",
+  "mut_pole",
+  "beta_cateninap",
+  "msh2",
+  "msh6",
+  "pms2",
+  "mlh1",
+  "grupo_de_riesgo_definitivo",
+  "asa"
+)
+
+
+data_diagnostico <- data %>% select(all_of(columnas_diagnostico))
+
+
+head(data_diagnostico)
+
+```
+
+
+#AHORA HACEMOS RATIOS DE EDAD
+```{r}
+
+library(ggplot2)
+
+# Eliminar NA de edad antes de crear grupos
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$edad), ]
+
+data_diagnostico_limpio$edad <- as.numeric(data_diagnostico_limpio$edad)
+data_diagnostico_limpio$grupo_edad <- cut(
+  data_diagnostico_limpio$edad,
+  breaks = c(-Inf, 29, 49, Inf),
+  labels = c("0-29", "30-49", "+50")
+)
+
+# Eliminar NA del grupo_edad
+grupo_temp <- data_diagnostico_limpio$grupo_edad[!is.na(data_diagnostico_limpio$grupo_edad)]
+
+frecuencia_edad <- table(grupo_temp)
+
+df_edad <- data.frame(
+  Grupo_edad = factor(names(frecuencia_edad), levels = c("0-29", "30-49", "+50")),
+  Frecuencia = as.numeric(frecuencia_edad),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_edad)) * 100, 2)
+)
+
+p <- ggplot(df_edad, aes(x = Grupo_edad, y = Porcentaje, fill = Grupo_edad)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  # geom_text(aes(label = paste0(Porcentaje, "%")),
+  #           vjust = -0.5, size = 4, fontface = "bold") +
+  labs(
+    title = "Distribució de freqüències: Grups d'edat",
+    x = "Grup d'edat",
+    y = "Percentatge (%)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    axis.text.y = element_text(size = 10),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    plot.background = element_blank(),
+    legend.position = "none"
+  ) +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_edad$Porcentaje) *1.1)
+
+print(p)
+
+
+```
+#Tamano tumoral
+```{r}
+# Grupos de tamaño tumoral
+data_diagnostico$tamano_tumoral_num <- as.numeric(data_diagnostico$tamano_tumoral)
+data_diagnostico$grupo_tamano <- cut(
+  data_diagnostico$tamano_tumoral_num,
+  breaks = c(-Inf, 2, 5, 10, 15, Inf),
+  labels = c("0-2 cm", "2-5 cm", "5-10 cm", "10-15 cm", ">15 cm"),
+  include.lowest = TRUE
+)
+
+# Eliminar NA antes de calcular frecuencias
+frecuencia_tamano <- table(data_diagnostico$grupo_tamano[!is.na(data_diagnostico$grupo_tamano)])
+df_tamano <- data.frame(
+  Grupo_tamano = factor(names(frecuencia_tamano), levels = c("0-2 cm", "2-5 cm", "5-10 cm", "10-15 cm", ">15 cm")),
+  Frecuencia = as.numeric(frecuencia_tamano),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_tamano)) * 100, 2)
+)
+print(df_tamano)
+
+p <- ggplot(df_tamano, aes(x = Grupo_tamano, y = Porcentaje, fill = Grupo_tamano)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de Tamany Tumoral",
+       x = "Tamany Tumoral",
+       y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    axis.text.x = element_text(angle = 0, size = 11),
+    axis.text.y = element_text(size = 10),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    plot.background = element_blank(),
+    legend.position = "none"
+  ) +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_tamano$Porcentaje) * 1.15)
+print(p)
+```
+#Tipo histologico:
+```{r}
+library(ggplot2)
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$tipo_histologico), ]
+tipo_histologico_temp <- data_diagnostico_limpio$tipo_histologico[!is.na(data_diagnostico_limpio$tipo_histologico)]
+frecuencia_tipo_histologico <- table(tipo_histologico_temp)
+df_tipo_histologico <- data.frame(
+  Tipo_histologico = names(frecuencia_tipo_histologico),
+  Frecuencia = as.numeric(frecuencia_tipo_histologico),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_tipo_histologico)) * 100, 2)
+)
+
+# Eliminar filas con NA en el dataframe
+df_tipo_histologico <- df_tipo_histologico[df_tipo_histologico$Tipo_histologico != "NA", ]
+df_tipo_histologico <- df_tipo_histologico[!is.na(df_tipo_histologico$Tipo_histologico), ]
+
+# Ordenar por valor numérico de Tipo_histologico de menor a mayor
+df_tipo_histologico$Tipo_histologico <- factor(
+  df_tipo_histologico$Tipo_histologico, 
+  levels = df_tipo_histologico$Tipo_histologico[order(as.numeric(df_tipo_histologico$Tipo_histologico))]
+)
+
+# Eliminar filas con NA en el dataframe
+df_tipo_histologico <- df_tipo_histologico[df_tipo_histologico$Tipo_histologico != "NA", ]
+df_tipo_histologico <- df_tipo_histologico[!is.na(df_tipo_histologico$Tipo_histologico), ]
+
+# Ordenar por valor numérico de Tipo_histologico de menor a mayor
+df_tipo_histologico$Tipo_histologico <- factor(
+  df_tipo_histologico$Tipo_histologico, 
+  levels = df_tipo_histologico$Tipo_histologico[order(as.numeric(df_tipo_histologico$Tipo_histologico))]
+)
+
+p_tipo_histologico <- ggplot(df_tipo_histologico, aes(x = Tipo_histologico, y = Porcentaje, fill = Tipo_histologico)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: Tipus histològic",
+       x = "Tipus histològic", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_tipo_histologico$Porcentaje) * 1.1)
+
+print(p_tipo_histologico)
+```
+
+#IMC
+```{r}
+library(ggplot2)
+
+# Eliminar NA del IMC ANTES de crear las categorías
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$imc), ]
+
+# Crear categorías de IMC (ahora sin NA)
+data_diagnostico_limpio$imc_categoria <- cut(
+  as.numeric(data_diagnostico_limpio$imc),
+  breaks = c(-Inf, 18.5, 25, 30, 35, 40, Inf),
+  labels = c("Infrapès", "Normal", "Sobrepès",
+             "Obesitat I", "Obesitat II", "Obesitat III"),
+  #"Infrapès (<18.5)", "Normal (18.5-24.9)", "Sobrepès (25.0-29.9)","Obesitat I (30.0-34.9)", "Obesitat II (35.0-39.9)", "Obesitat III (≥40)")
+  right = FALSE)
+
+cat("\n========================================\n")
+cat("COLUMNA: imc_categoria\n")
+cat("========================================\n")
+
+# Obtener la columna imc_categoria (ya sin NA)
+columna_temp <- data_diagnostico_limpio$imc_categoria
+columna_temp <- columna_temp[!is.na(columna_temp)]
+
+# Convertir a caracter
+columna_temp <- as.character(columna_temp)
+
+# Crear tabla de frecuencias
+tabla <- table(columna_temp)
+
+# Calcular porcentajes (sobre el total sin NA, suma 100%)
+porcentajes <- round((tabla / sum(tabla)) * 100, 2)
+
+# Crear dataframe para el gráfico
+resultado <- data.frame(
+  Valor = names(tabla),
+  Frecuencia = as.numeric(tabla),
+  Porcentaje = as.numeric(porcentajes)
+)
+
+# Crear histograma con porcentajes
+grafico <- ggplot(resultado, aes(x = Valor, y = Porcentaje, fill = Valor)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  #geom_text(aes(label = paste0(Porcentaje, "%")),
+            #vjust = -0.5, size = 4, fontface = "bold") +
+  labs(title = "Distribució imc",
+       x = "imc",
+       y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    axis.text.y = element_text(size = 10),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    plot.background = element_blank(),
+    legend.position = "none"
+  ) +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(resultado$Porcentaje) * 1.1)
+
+# Mostrar gráfico
+print(grafico)
+```
+# ============================================
+# 4. HISTO DEFIN 
+```{r}
+# Eliminar NA de histo_defin de forma estricta
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$histo_defin) & 
+                                             data_diagnostico$histo_defin != "" &
+                                             data_diagnostico$histo_defin != "NA", ]
+
+# Convertir a character y filtrar NA
+histo_defin_temp <- as.character(data_diagnostico_limpio$histo_defin)
+histo_defin_temp <- histo_defin_temp[!is.na(histo_defin_temp) & 
+                                       histo_defin_temp != "" & 
+                                       histo_defin_temp != "NA"]
+
+# Crear tabla de frecuencias
+frecuencia_histo_defin <- table(histo_defin_temp)
+
+# Crear dataframe
+df_histo_defin <- data.frame(
+  Histo_defin = names(frecuencia_histo_defin),
+  Frecuencia = as.numeric(frecuencia_histo_defin),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_histo_defin)) * 100, 2)
+)
+
+# Crear gráfico
+p_histo_defin <- ggplot(df_histo_defin, aes(x = Histo_defin, y = Porcentaje, fill = Histo_defin)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: Histo defin",
+       x = "Histo defin", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_histo_defin$Porcentaje) * 1.1)
+
+print(p_histo_defin)
+```
+
+# ============================================
+# 5. GRADO
+```{r}
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$Grado), ]
+grado_temp <- data_diagnostico_limpio$Grado
+frecuencia_grado <- table(grado_temp)
+df_grado <- data.frame(
+  Grado = names(frecuencia_grado),
+  Frecuencia = as.numeric(frecuencia_grado),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_grado)) * 100, 2)
+)
+p_grado <- ggplot(df_grado, aes(x = Grado, y = Porcentaje, fill = Grado)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: Grau",
+       x = "Grau", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_grado$Porcentaje) * 1.1)
+print(p_grado)
+```
+
+# ============================================
+# 6. GRADO HISTOLÓGICO
+```{r}
+# Eliminar NA de grado_histologi de forma estricta
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$grado_histologi) & 
+                                             data_diagnostico$grado_histologi != "" &
+                                             data_diagnostico$grado_histologi != "NA", ]
+
+# Convertir a character y filtrar NA
+grado_histologi_temp <- as.character(data_diagnostico_limpio$grado_histologi)
+grado_histologi_temp <- grado_histologi_temp[!is.na(grado_histologi_temp) & 
+                                               grado_histologi_temp != "" & 
+                                               grado_histologi_temp != "NA"]
+
+# Crear tabla de frecuencias
+frecuencia_grado_histologi <- table(grado_histologi_temp)
+
+# Crear dataframe
+df_grado_histologi <- data.frame(
+  Grado_histologi = names(frecuencia_grado_histologi),
+  Frecuencia = as.numeric(frecuencia_grado_histologi),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_grado_histologi)) * 100, 2)
+)
+
+# Crear gráfico
+p_grado_histologi <- ggplot(df_grado_histologi, aes(x = Grado_histologi, y = Porcentaje, fill = Grado_histologi)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: Grau histològic",
+       x = "Grau histològic", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_grado_histologi$Porcentaje) * 1.1)
+
+print(p_grado_histologi)
+
+```
+# ============================================
+# 7. TAMAÑO TUMORAL
+
+# ============================================
+# 8. ECOTV INFILTSUB
+```{r}
+# Eliminar NA de ecotv_infiltsub de forma estricta
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$ecotv_infiltsub) & 
+                                             data_diagnostico$ecotv_infiltsub != "" &
+                                             data_diagnostico$ecotv_infiltsub != "NA", ]
+
+# Convertir a character y filtrar NA
+ecotv_infiltsub_temp <- as.character(data_diagnostico_limpio$ecotv_infiltsub)
+ecotv_infiltsub_temp <- ecotv_infiltsub_temp[!is.na(ecotv_infiltsub_temp) & 
+                                               ecotv_infiltsub_temp != "" & 
+                                               ecotv_infiltsub_temp != "NA"]
+
+# Crear tabla de frecuencias
+frecuencia_ecotv_infiltsub <- table(ecotv_infiltsub_temp)
+
+# Crear dataframe
+df_ecotv_infiltsub <- data.frame(
+  Ecotv_infiltsub = names(frecuencia_ecotv_infiltsub),
+  Frecuencia = as.numeric(frecuencia_ecotv_infiltsub),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_ecotv_infiltsub)) * 100, 2)
+)
+
+# Crear gráfico
+p_ecotv_infiltsub <- ggplot(df_ecotv_infiltsub, aes(x = Ecotv_infiltsub, y = Porcentaje, fill = Ecotv_infiltsub)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: Ecotv infiltsub",
+       x = "Ecotv infiltsub", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_ecotv_infiltsub$Porcentaje) * 1.1)
+
+print(p_ecotv_infiltsub)
+
+```
+# ============================================
+# 9. METÁSTASIS DISTANTES
+```{r}
+# Eliminar NA de metasta_distan de forma estricta
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$metasta_distan) & 
+                                             data_diagnostico$metasta_distan != "" &
+                                             data_diagnostico$metasta_distan != "NA", ]
+
+# Convertir a character y filtrar NA
+metasta_distan_temp <- as.character(data_diagnostico_limpio$metasta_distan)
+metasta_distan_temp <- metasta_distan_temp[!is.na(metasta_distan_temp) & 
+                                             metasta_distan_temp != "" & 
+                                             metasta_distan_temp != "NA"]
+
+# Crear tabla de frecuencias
+frecuencia_metasta_distan <- table(metasta_distan_temp)
+
+# Crear dataframe
+df_metasta_distan <- data.frame(
+  Metasta_distan = names(frecuencia_metasta_distan),
+  Frecuencia = as.numeric(frecuencia_metasta_distan),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_metasta_distan)) * 100, 2)
+)
+
+# Crear gráfico
+p_metasta_distan <- ggplot(df_metasta_distan, aes(x = Metasta_distan, y = Porcentaje, fill = Metasta_distan)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: Metàstasi distant",
+       x = "Metàstasi distant", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_metasta_distan$Porcentaje) * 1.1)
+
+print(p_metasta_distan)
+
+```
+# ============================================
+# 10. AFECTACIÓN LINFÁTICA
+```{r}
+# Eliminar NA de afectacion_linf de forma estricta
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$afectacion_linf) & 
+                                             data_diagnostico$afectacion_linf != "" &
+                                             data_diagnostico$afectacion_linf != "NA", ]
+
+# Convertir a character y filtrar NA
+afectacion_linf_temp <- as.character(data_diagnostico_limpio$afectacion_linf)
+afectacion_linf_temp <- afectacion_linf_temp[!is.na(afectacion_linf_temp) & 
+                                               afectacion_linf_temp != "" & 
+                                               afectacion_linf_temp != "NA"]
+
+# Crear tabla de frecuencias
+frecuencia_afectacion_linf <- table(afectacion_linf_temp)
+
+# Crear dataframe
+df_afectacion_linf <- data.frame(
+  Afectacion_linf = names(frecuencia_afectacion_linf),
+  Frecuencia = as.numeric(frecuencia_afectacion_linf),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_afectacion_linf)) * 100, 2)
+)
+
+# Crear gráfico
+p_afectacion_linf <- ggplot(df_afectacion_linf, aes(x = Afectacion_linf, y = Porcentaje, fill = Afectacion_linf)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: Afectació limfàtica",
+       x = "Afectació limfàtica", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_afectacion_linf$Porcentaje) * 1.1)
+
+print(p_afectacion_linf)
+
+```
+# ============================================
+# 11. AP CENTINELA PÉLVICO
+```{r}
+# Eliminar NA de AP_centinela_pelvico de forma estricta
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$AP_centinela_pelvico) & 
+                                             data_diagnostico$AP_centinela_pelvico != "" &
+                                             data_diagnostico$AP_centinela_pelvico != "NA", ]
+
+# Convertir a character y filtrar NA
+ap_centinela_pelvico_temp <- as.character(data_diagnostico_limpio$AP_centinela_pelvico)
+ap_centinela_pelvico_temp <- ap_centinela_pelvico_temp[!is.na(ap_centinela_pelvico_temp) & 
+                                                         ap_centinela_pelvico_temp != "" & 
+                                                         ap_centinela_pelvico_temp != "NA"]
+
+# Crear tabla de frecuencias
+frecuencia_ap_centinela <- table(ap_centinela_pelvico_temp)
+
+# Crear dataframe
+df_ap_centinela <- data.frame(
+  AP_centinela = names(frecuencia_ap_centinela),
+  Frecuencia = as.numeric(frecuencia_ap_centinela),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_ap_centinela)) * 100, 2)
+)
+
+# Crear gráfico
+p_ap_centinela <- ggplot(df_ap_centinela, aes(x = AP_centinela, y = Porcentaje, fill = AP_centinela)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: AP centinela pèlvic",
+       x = "AP centinela pèlvic", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_ap_centinela$Porcentaje) * 1.1)
+
+print(p_ap_centinela)
+```
+
+# ============================================
+# 12. AP GANGLIOS PÉLVICOS
+```{r}
+# Eliminar NA de AP_ganPelv de forma estricta
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$AP_ganPelv) & 
+                                             data_diagnostico$AP_ganPelv != "" &
+                                             data_diagnostico$AP_ganPelv != "NA", ]
+
+# Convertir a character y filtrar NA
+ap_ganpelv_temp <- as.character(data_diagnostico_limpio$AP_ganPelv)
+ap_ganpelv_temp <- ap_ganpelv_temp[!is.na(ap_ganpelv_temp) & 
+                                     ap_ganpelv_temp != "" & 
+                                     ap_ganpelv_temp != "NA"]
+
+# Crear tabla de frecuencias
+frecuencia_ap_ganpelv <- table(ap_ganpelv_temp)
+
+# Crear dataframe
+df_ap_ganpelv <- data.frame(
+  AP_ganPelv = names(frecuencia_ap_ganpelv),
+  Frecuencia = as.numeric(frecuencia_ap_ganpelv),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_ap_ganpelv)) * 100, 2)
+)
+
+# Crear gráfico
+p_ap_ganpelv <- ggplot(df_ap_ganpelv, aes(x = AP_ganPelv, y = Porcentaje, fill = AP_ganPelv)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: AP ganglis pèlvics",
+       x = "AP ganglis pèlvics", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_ap_ganpelv$Porcentaje) * 1.1)
+
+print(p_ap_ganpelv)
+```
+
+# ============================================
+# 13. P53 MOLECULAR
+```{r}
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$p53_molecular), ]
+p53_molecular_temp <- data_diagnostico_limpio$p53_molecular[!is.na(data_diagnostico_limpio$p53_molecular)]
+frecuencia_p53_molecular <- table(p53_molecular_temp)
+df_p53_molecular <- data.frame(
+  P53_molecular = names(frecuencia_p53_molecular),
+  Frecuencia = as.numeric(frecuencia_p53_molecular),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_p53_molecular)) * 100, 2)
+)
+# Eliminar filas con NA en el dataframe
+df_p53_molecular <- df_p53_molecular[df_p53_molecular$P53_molecular != "NA", ]
+df_p53_molecular <- df_p53_molecular[!is.na(df_p53_molecular$P53_molecular), ]
+
+p_p53_molecular <- ggplot(df_p53_molecular, aes(x = P53_molecular, y = Porcentaje, fill = P53_molecular)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: P53 molecular",
+       x = "P53 molecular", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_p53_molecular$Porcentaje) * 1.1)
+print(p_p53_molecular)
+```
+# ============================================
+# 14. P53 IHQ
+```{r}
+# Eliminar NA de p53_ihq de forma estricta
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$p53_ihq) & 
+                                             data_diagnostico$p53_ihq != "" &
+                                             data_diagnostico$p53_ihq != "NA", ]
+
+# Convertir a character y filtrar NA
+p53_ihq_temp <- as.character(data_diagnostico_limpio$p53_ihq)
+p53_ihq_temp <- p53_ihq_temp[!is.na(p53_ihq_temp) & 
+                               p53_ihq_temp != "" & 
+                               p53_ihq_temp != "NA"]
+
+# Crear tabla de frecuencias
+frecuencia_p53_ihq <- table(p53_ihq_temp)
+
+# Crear dataframe
+df_p53_ihq <- data.frame(
+  P53_ihq = names(frecuencia_p53_ihq),
+  Frecuencia = as.numeric(frecuencia_p53_ihq),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_p53_ihq)) * 100, 2)
+)
+
+# Crear gráfico
+p_p53_ihq <- ggplot(df_p53_ihq, aes(x = P53_ihq, y = Porcentaje, fill = P53_ihq)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: P53 IHQ",
+       x = "P53 IHQ", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_p53_ihq$Porcentaje) * 1.1)
+
+print(p_p53_ihq)
+
+```
+# ============================================
+# 15. MUT POLE
+```{r}
+# Eliminar NA de mut_pole de forma estricta
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$mut_pole) & 
+                                             data_diagnostico$mut_pole != "" &
+                                             data_diagnostico$mut_pole != "NA", ]
+
+# Convertir a character y filtrar NA
+mut_pole_temp <- as.character(data_diagnostico_limpio$mut_pole)
+mut_pole_temp <- mut_pole_temp[!is.na(mut_pole_temp) & 
+                                 mut_pole_temp != "" & 
+                                 mut_pole_temp != "NA"]
+
+# Crear tabla de frecuencias
+frecuencia_mut_pole <- table(mut_pole_temp)
+
+# Crear dataframe
+df_mut_pole <- data.frame(
+  Mut_pole = names(frecuencia_mut_pole),
+  Frecuencia = as.numeric(frecuencia_mut_pole),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_mut_pole)) * 100, 2)
+)
+
+# Crear gráfico
+p_mut_pole <- ggplot(df_mut_pole, aes(x = Mut_pole, y = Porcentaje, fill = Mut_pole)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: Mut POLE",
+       x = "Mut POLE", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_mut_pole$Porcentaje) * 1.1)
+
+print(p_mut_pole)
+```
+
+# ============================================
+# 16. BETA CATENINA P
+```{r}
+# Eliminar NA de beta_cateninap de forma estricta
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$beta_cateninap) & 
+                                             data_diagnostico$beta_cateninap != "" &
+                                             data_diagnostico$beta_cateninap != "NA", ]
+
+# Convertir a character y filtrar NA
+beta_cateninap_temp <- as.character(data_diagnostico_limpio$beta_cateninap)
+beta_cateninap_temp <- beta_cateninap_temp[!is.na(beta_cateninap_temp) & 
+                                             beta_cateninap_temp != "" & 
+                                             beta_cateninap_temp != "NA"]
+
+# Crear tabla de frecuencias
+frecuencia_beta_cateninap <- table(beta_cateninap_temp)
+
+# Crear dataframe
+df_beta_cateninap <- data.frame(
+  Beta_cateninap = names(frecuencia_beta_cateninap),
+  Frecuencia = as.numeric(frecuencia_beta_cateninap),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_beta_cateninap)) * 100, 2)
+)
+
+# Crear gráfico
+p_beta_cateninap <- ggplot(df_beta_cateninap, aes(x = Beta_cateninap, y = Porcentaje, fill = Beta_cateninap)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: Beta catenina P",
+       x = "Beta catenina P", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_beta_cateninap$Porcentaje) * 1.1)
+
+print(p_beta_cateninap)
+```
+#DIST MSH2
+```{r}
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$msh2), ]
+msh2_temp <- data_diagnostico_limpio$msh2[!is.na(data_diagnostico_limpio$msh2)]
+frecuencia_msh2 <- table(msh2_temp)
+df_msh2 <- data.frame(
+  Msh2 = names(frecuencia_msh2),
+  Frecuencia = as.numeric(frecuencia_msh2),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_msh2)) * 100, 2)
+)
+# Eliminar filas con NA en el dataframe
+df_msh2 <- df_msh2[df_msh2$Msh2 != "NA", ]
+df_msh2 <- df_msh2[!is.na(df_msh2$Msh2), ]
+
+p_msh2 <- ggplot(df_msh2, aes(x = Msh2, y = Porcentaje, fill = Msh2)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: MSH2",
+       x = "MSH2", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_msh2$Porcentaje) * 1.1)
+print(p_msh2)
+```
+#DIST MSH6
+```{r}
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$msh6), ]
+msh6_temp <- data_diagnostico_limpio$msh6[!is.na(data_diagnostico_limpio$msh6)]
+frecuencia_msh6 <- table(msh6_temp)
+df_msh6 <- data.frame(
+  Msh6 = names(frecuencia_msh6),
+  Frecuencia = as.numeric(frecuencia_msh6),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_msh6)) * 100, 2)
+)
+# Eliminar filas con NA en el dataframe
+df_msh6 <- df_msh6[df_msh6$Msh6 != "NA", ]
+df_msh6 <- df_msh6[!is.na(df_msh6$Msh6), ]
+
+p_msh6 <- ggplot(df_msh6, aes(x = Msh6, y = Porcentaje, fill = Msh6)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: MSH6",
+       x = "MSH6", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_msh6$Porcentaje) * 1.1)
+print(p_msh6)
+```
+#PMS2
+```{r}
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$pms2), ]
+pms2_temp <- data_diagnostico_limpio$pms2[!is.na(data_diagnostico_limpio$pms2)]
+frecuencia_pms2 <- table(pms2_temp)
+df_pms2 <- data.frame(
+  Pms2 = names(frecuencia_pms2),
+  Frecuencia = as.numeric(frecuencia_pms2),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_pms2)) * 100, 2)
+)
+# Eliminar filas con NA en el dataframe
+df_pms2 <- df_pms2[df_pms2$Pms2 != "NA", ]
+df_pms2 <- df_pms2[!is.na(df_pms2$Pms2), ]
+
+p_pms2 <- ggplot(df_pms2, aes(x = Pms2, y = Porcentaje, fill = Pms2)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: PMS2",
+       x = "PMS2", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_pms2$Porcentaje) * 1.1)
+print(p_pms2)
+```
+
+#MLH1
+```{r}
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$mlh1), ]
+mlh1_temp <- data_diagnostico_limpio$mlh1[!is.na(data_diagnostico_limpio$mlh1)]
+frecuencia_mlh1 <- table(mlh1_temp)
+df_mlh1 <- data.frame(
+  Mlh1 = names(frecuencia_mlh1),
+  Frecuencia = as.numeric(frecuencia_mlh1),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_mlh1)) * 100, 2)
+)
+# Eliminar filas con NA en el dataframe
+df_mlh1 <- df_mlh1[df_mlh1$Mlh1 != "NA", ]
+df_mlh1 <- df_mlh1[!is.na(df_mlh1$Mlh1), ]
+
+p_mlh1 <- ggplot(df_mlh1, aes(x = Mlh1, y = Porcentaje, fill = Mlh1)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: MLH1",
+       x = "MLH1", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_mlh1$Porcentaje) * 1.1)
+print(p_mlh1)
+```
+#GRUPO DE RIESGO DEFINITIVO
+```{r}
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$grupo_de_riesgo_definitivo), ]
+grupo_riesgo_temp <- data_diagnostico_limpio$grupo_de_riesgo_definitivo[!is.na(data_diagnostico_limpio$grupo_de_riesgo_definitivo)]
+frecuencia_grupo_riesgo <- table(grupo_riesgo_temp)
+df_grupo_riesgo <- data.frame(
+  Grupo_riesgo = names(frecuencia_grupo_riesgo),
+  Frecuencia = as.numeric(frecuencia_grupo_riesgo),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_grupo_riesgo)) * 100, 2)
+)
+# Eliminar filas con NA en el dataframe
+df_grupo_riesgo <- df_grupo_riesgo[df_grupo_riesgo$Grupo_riesgo != "NA", ]
+df_grupo_riesgo <- df_grupo_riesgo[!is.na(df_grupo_riesgo$Grupo_riesgo), ]
+
+p_grupo_riesgo <- ggplot(df_grupo_riesgo, aes(x = Grupo_riesgo, y = Porcentaje, fill = Grupo_riesgo)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: Grup de risc definitiu",
+       x = "Grup de risc definitiu", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_grupo_riesgo$Porcentaje) * 1.1)
+print(p_grupo_riesgo)
+```
+
+#ASA
+```{r}
+data_diagnostico_limpio <- data_diagnostico[!is.na(data_diagnostico$asa), ]
+asa_temp <- data_diagnostico_limpio$asa[!is.na(data_diagnostico_limpio$asa)]
+frecuencia_asa <- table(asa_temp)
+df_asa <- data.frame(
+  Asa = names(frecuencia_asa),
+  Frecuencia = as.numeric(frecuencia_asa),
+  Porcentaje = round(as.numeric(prop.table(frecuencia_asa)) * 100, 2)
+)
+# Eliminar filas con NA en el dataframe
+df_asa <- df_asa[df_asa$Asa != "NA", ]
+df_asa <- df_asa[!is.na(df_asa$Asa), ]
+
+p_asa <- ggplot(df_asa, aes(x = Asa, y = Porcentaje, fill = Asa)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  labs(title = "Distribució de freqüències: ASA",
+       x = "ASA", y = "Percentatge (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set3") +
+  ylim(0, max(df_asa$Porcentaje) * 1.1)
+print(p_asa)
+```
+
