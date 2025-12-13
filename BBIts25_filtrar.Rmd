@@ -643,7 +643,6 @@ ggplot(pca_scores_df, aes(x = Dim.1, y = Dim.2, color = cluster)) +
 ```
 
 ```{r}
-```{r}
 # Check if all deaths were relapses
 death_relapse_check <- data_reducido %>%
   filter(recidiva_exitus == 1) %>%
@@ -753,27 +752,124 @@ ggplot(cluster_summary %>% filter(recidiva == 0),
   labs(title = "Distribución de variables en pacientes por cluster y sin recidiva",
        x = "Variable",
        y = "Cluster",
-       caption = summary_text)
+       caption = summary_text)   # <-- annotation added here
 ```
 
 ```{r}
-# Beta-catenina
-data_rec$beta_cateninap <- factor(data_rec$beta_cateninap,
-                                  levels = c("0","1","2","NA"),
-                                  labels = c("Negativo","Positivo","Otro","Desconocido"))
+library(dplyr)
+library(tidyr)
+library(ggplot2)
 
-# MLH1
-data_rec$mlh1 <- factor(data_rec$mlh1,
-                        levels = c("0","2","NA"),
-                        labels = c("Negativo","Positivo","Desconocido"))
+# 1. Subset: pacients sense recidiva
+non_relapsed <- data_rec %>%
+  filter(recidiva == 0)
 
-# Tipo histológico (ejemplo: ajusta según tu diccionario real)
-data_rec$tipo_histologico <- factor(data_rec$tipo_histologico,
-                                    levels = c(1,2,3,4,5,7,8,9,10,12,88),
-                                    labels = c("Endometrioide","Seroso","Mucinoso","Claro","Mixto",
-                                               "Otro1","Otro2","Otro3","Otro4","Otro5","Desconocido"))
+# 2. Variables d'interès
+vars_sig <- c("Grado", "libre_enferm", "beta_cateninap", "mlh1",
+              "grupo_de_riesgo_definitivo", "Tributaria_a_Radioterapia",
+              "afectacion_linf", "grado_histologi", "AP_centinela_pelvico",
+              "AP_ganPelv", "tipo_histologico")
+
+# 3. Preparar freqüències per cluster i estat vital
+heatmap_data <- non_relapsed %>%
+  select(cluster, cluster_label, recidiva_exitus, all_of(vars_sig)) %>%
+  mutate(death_status = ifelse(recidiva_exitus == 1, "Morts", "Vius")) %>%
+  mutate(across(all_of(vars_sig), as.factor)) %>%
+  pivot_longer(cols = all_of(vars_sig), names_to = "variable", values_to = "value") %>%
+  group_by(cluster_label, death_status, variable, value) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(cluster_label, death_status, variable) %>%
+  mutate(freq = n / sum(n))
+
+# 4. Diccionari de traducció al català
+labels_vars <- c(
+  Grado = "Grau tumoral",
+  libre_enferm = "Lliure de malaltia",
+  beta_cateninap = "Beta-catenina",
+  mlh1 = "MLH1",
+  grupo_de_riesgo_definitivo = "Grup de risc definitiu",
+  Tributaria_a_Radioterapia = "Radioteràpia",
+  afectacion_linf = "Afectació limfàtica",
+  grado_histologi = "Grau histològic",
+  AP_centinela_pelvico = "Gangli centinella pèlvic",
+  AP_ganPelv = "Gangli pèlvic",
+  tipo_histologico = "Tipus histològic"
+)
+
+# 5. Aplicar traducció
+heatmap_data <- heatmap_data %>%
+  mutate(variable = recode(variable, !!!labels_vars))
+
+# 6. Gràfic heatmap
+ggplot(heatmap_data, aes(x = variable, y = cluster_label, fill = freq)) +
+  geom_tile(color = "black") +
+  scale_fill_gradient(low = "white", high = "red", name = "Proporció") +
+  facet_wrap(~death_status) +
+  theme_minimal(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Distribució de variables vius/morts en pacients sense recidiva",
+       x = "Variable",
+       y = "Cluster")
+
 
 ```
 
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# 1. Subset: pacients sense recidiva
+non_relapsed <- data_rec %>%
+  filter(recidiva == 1)
+
+# 2. Variables d'interès
+vars_sig <- c("Grado", "libre_enferm", "beta_cateninap", "mlh1",
+              "grupo_de_riesgo_definitivo", "Tributaria_a_Radioterapia",
+              "afectacion_linf", "grado_histologi", "AP_centinela_pelvico",
+              "AP_ganPelv", "tipo_histologico")
+
+# 3. Preparar freqüències per cluster i estat vital
+heatmap_data <- non_relapsed %>%
+  select(cluster, cluster_label, recidiva_exitus, all_of(vars_sig)) %>%
+  mutate(death_status = ifelse(recidiva_exitus == 1, "Morts", "Vius")) %>%
+  mutate(across(all_of(vars_sig), as.factor)) %>%
+  pivot_longer(cols = all_of(vars_sig), names_to = "variable", values_to = "value") %>%
+  group_by(cluster_label, death_status, variable, value) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(cluster_label, death_status, variable) %>%
+  mutate(freq = n / sum(n))
+
+# 4. Diccionari de traducció al català
+labels_vars <- c(
+  Grado = "Grau tumoral",
+  libre_enferm = "Lliure de malaltia",
+  beta_cateninap = "Beta-catenina",
+  mlh1 = "MLH1",
+  grupo_de_riesgo_definitivo = "Grup de risc definitiu",
+  Tributaria_a_Radioterapia = "Radioteràpia",
+  afectacion_linf = "Afectació limfàtica",
+  grado_histologi = "Grau histològic",
+  AP_centinela_pelvico = "Gangli centinella pèlvic",
+  AP_ganPelv = "Gangli pèlvic",
+  tipo_histologico = "Tipus histològic"
+)
+
+# 5. Aplicar traducció
+heatmap_data <- heatmap_data %>%
+  mutate(variable = recode(variable, !!!labels_vars))
+
+# 6. Gràfic heatmap
+ggplot(heatmap_data, aes(x = variable, y = cluster_label, fill = freq)) +
+  geom_tile(color = "black") +
+  scale_fill_gradient(low = "white", high = "red", name = "Proporció") +
+  facet_wrap(~death_status) +
+  theme_minimal(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Distribució de variables vius/morts en pacients sense recidiva",
+       x = "Variable",
+       y = "Cluster")
 
 
+
+```
