@@ -17,6 +17,7 @@ suppressPackageStartupMessages({
   library(dplyr)
   library(forcats)
   library(logistf)
+  library(readxl)
 })
 ```
 
@@ -106,8 +107,30 @@ columnas_a_conservar <- c(
 
 data_reducido <- data %>% select(all_of(columnas_a_conservar))
 
+# Fix inconsistencies between death_status and f_muerte
+data_reducido <- data_reducido %>%
+  mutate(
+    death_status = ifelse(recidiva_exitus == 1, "Deceased", "Alive"),
+    # Correction rule: trust the date
+    death_status = case_when(
+      !is.na(f_muerte) ~ "Deceased",
+      is.na(f_muerte)  ~ "Alive"
+    ),
+    recidiva_exitus = ifelse(death_status == "Deceased", 1, 0)
+  )
 
-head(data_reducido)
+# Quick validation summary
+summary_check <- data_reducido %>%
+  group_by(death_status) %>%
+  summarise(
+    total = n(),
+    missing_date = sum(is.na(f_muerte)),
+    with_date = sum(!is.na(f_muerte)),
+    perc_missing = round(100 * missing_date / total, 1)
+  )
+
+print(summary_check)
+
 
 
 ```
@@ -115,14 +138,6 @@ head(data_reducido)
 ```{r}
 data_limpia <- data_reducido %>%
   select(where(~ mean(is.na(.)) < 0.5)) 
-```
-
-```{r}
-
-```
-
-```{r}
-
 ```
 
 
@@ -402,6 +417,362 @@ roc_cv <- roc(data_core$recidiva_bin, oof_pred,
               levels = c("NoRecidiva","Recidiva"), direction = "<")
 plot(roc_cv, col = "blue", main = "ROC curve (Firth, 5-fold CV)")
 cat("Cross-validated AUC =", round(auc(roc_cv), 3), "\n")
+```
+```{r}
+# Paquetes necesarios
+library(dplyr)
+library(imputeTS)
+
+# Variables significativas
+sig_vars <- c("Grado", "libre_enferm", "beta_cateninap", "mlh1",
+              "grupo_de_riesgo_definitivo", "Tributaria_a_Radioterapia",
+              "afectacion_linf", "grado_histologi", "AP_centinela_pelvico",
+              "AP_ganPelv", "tipo_histologico_collapsed")
+
+# Selección y conversión de factores a numéricos
+data_sig <- data_rec %>%
+  select(all_of(sig_vars)) %>%
+  mutate(across(everything(), ~ as.numeric(as.factor(.))))
+
+# Imputación de valores NA con la mediana
+data_sig_imputed <- data_sig %>%
+  mutate(across(everything(), ~ ifelse(is.na(.), median(., na.rm = TRUE), .)))
+
+# PCA con escalado
+pca_res <- prcomp(data_sig_imputed, scale. = TRUE)
+
+# Eigenvalues y proporción de varianza explicada
+eig_vals <- (pca_res$sdev)^2
+var_explained <- eig_vals / sum(eig_vals)
+
+# Scree plot
+plot(var_explained, type = "b", xlab = "PC", ylab = "Proporción de varianza explicada",
+     main = "Scree Plot")
+
+# Varianza acumulada
+plot(cumsum(var_explained), type = "b", xlab = "PC", ylab = "Varianza acumulada",
+     main = "Varianza acumulada por componente")
+
+# Crear un data frame con los resultados
+varianza_df <- data.frame(
+  Componente = paste0("PC", seq_along(var_explained)),
+  Varianza_Explicada = round(var_explained, 4),
+  Varianza_Acumulada = round(cumsum(var_explained), 4)
+)
+
+# Mostrar ordenado por varianza explicada (de mayor a menor)
+varianza_df[order(-varianza_df$Varianza_Explicada), ]
+
+
+# Loadings (pesos de cada variable en cada componente)
+loadings <- pca_res$rotation
+
+# Mostrar los primeros componentes (por ejemplo PC1 y PC2)
+loadings_df <- data.frame(loadings[, 1:2])
+print(loadings_df)
+
+# Si quieres ordenarlos por importancia en PC1
+loadings_PC1 <- sort(loadings[,1], decreasing = TRUE)
+print(loadings_PC1)
+
+# Si quieres ordenarlos por importancia en PC2
+loadings_PC2 <- sort(loadings[,2], decreasing = TRUE)
+print(loadings_PC2)
+
+
+
+```
+
+```{r}
+# Extraer los loadings (pesos de cada variable en cada componente)
+loadings <- pca_res$rotation
+
+# Convertir a data frame para facilitar el manejo
+loadings_df <- as.data.frame(loadings)
+loadings_df$Variable <- rownames(loadings_df)
+
+# Visualizar los pesos ordenados para PC1
+loadings_PC1 <- loadings_df %>%
+  select(Variable, PC1) %>%
+  arrange(desc(abs(PC1)))
+
+print(loadings_PC1)
+
+# Visualizar los pesos ordenados para PC2
+loadings_PC2 <- loadings_df %>%
+  select(Variable, PC2) %>%
+  arrange(desc(abs(PC2)))
+
+print(loadings_PC2)
+
+library(ggplot2)
+
+# Barplot para PC1
+ggplot(loadings_PC1, aes(x = reorder(Variable, abs(PC1)), y = PC1)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Contribución de variables a PC1", x = "Variable", y = "Peso (loading)")
+
+# Barplot para PC2
+ggplot(loadings_PC2, aes(x = reorder(Variable, abs(PC2)), y = PC2)) +
+  geom_bar(stat = "identity", fill = "darkorange") +
+  coord_flip() +
+  labs(title = "Contribución de variables a PC2", x = "Variable", y = "Peso (loading)")
+
+
+
+```
+```{r}
+#### PCA and clustering analysis
+
+# Select numeric variables only
+numeric_vars <- data_rec %>%
+  select(where(is.numeric)) %>%
+  na.omit()
+
+# Standardize
+numeric_scaled <- scale(numeric_vars)
+
+# PCA
+pca_res <- prcomp(numeric_scaled, center = TRUE, scale. = TRUE)
+
+# Scree plot (eigenvalues)
+plot(pca_res, type = "l", main = "Scree plot of eigenvalues")
+
+# Variance explained
+summary(pca_res)
+
+# Variable contributions (loadings)
+loadings <- pca_res$rotation
+print(loadings[,1:3])  # contributions to first 3 PCs
+
+# Clustering on PCA scores
+set.seed(123)
+pca_scores <- pca_res$x[,1:2]  # first 2 PCs
+km_res <- kmeans(pca_scores, centers = 3, nstart = 25)
+
+# Plot clusters
+plot(pca_scores, col = km_res$cluster,
+     main = "Clustering on PCA (PC1 vs PC2)")
+points(km_res$centers, col = 1:3, pch = 8, cex = 2)
+
+# Prepare PCA scores as a data frame
+pca_scores_df <- as.data.frame(pca_scores)
+pca_scores_df$cluster <- factor(km_res$cluster)
+
+# Add death status (assuming 'recidiva_exitus' indicates death: 1 = death, 0 = alive)
+pca_scores_df$death_status <- factor(data_rec$recidiva_exitus,
+                                     levels = c(0,1),
+                                     labels = c("Alive","Deceased"))
+
+# PCA plot with clusters and death status
+ggplot(pca_scores_df, aes(x = PC1, y = PC2, color = cluster, shape = death_status)) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_point(data = as.data.frame(km_res$centers), 
+             aes(x = PC1, y = PC2),
+             color = 1:3, shape = 8, size = 4) +
+  labs(title = "K-means Clustering on PCA (PC1 vs PC2) with Death Status",
+       color = "Cluster",
+       shape = "Death Status") +
+  theme_minimal() +
+  theme(text = element_text(size = 12))
+
+table(pca_scores_df$cluster, data_rec$recidiva_bin)
+
+```
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(FactoMineR)
+library(factoextra)
+
+# 1. Selecciona solo las variables significativas que quieres conservar
+# Ejemplo usando nombres de tus variables significativas
+vars_sig <- c("Grado", "libre_enferm", "beta_cateninap", "mlh1", 
+              "grupo_de_riesgo_definitivo", "Tributaria_a_Radioterapia",
+              "afectacion_linf", "grado_histologi", "AP_centinela_pelvico",
+              "AP_ganPelv", "tipo_histologico_collapsed")
+
+data_sig <- data_rec %>%
+  select(all_of(vars_sig))
+
+# 2. Convierte las variables categóricas en factores (si no lo son)
+data_sig <- data_sig %>% mutate(across(where(is.character), as.factor))
+
+# 3. Imputa valores faltantes (opcional, PCA no puede manejar NAs)
+# Aquí se reemplaza NA por "Missing" en factores
+data_sig <- data_sig %>% mutate(across(where(is.factor), ~addNA(.)))
+
+# 4. Usar PCA con variables mixtas (numéricas y categóricas)
+# FactoMineR::FAMD es ideal para esto
+famd_res <- FAMD(data_sig, graph = FALSE)
+
+# 5. Scree plot
+fviz_screeplot(famd_res, addlabels = TRUE, ylim = c(0, 50))
+
+# 6. Visualizar variables que más contribuyen a los primeros PCs
+fviz_famd_var(famd_res, choice = "var", repel = TRUE)
+
+# 7. Obtener las coordenadas de los individuos (scores)
+pca_scores <- famd_res$ind$coord[,1:2]  # primeros 2 PCs
+
+# 8. Clustering (K-means) sobre los scores de PCA
+set.seed(123)
+km_res <- kmeans(pca_scores, centers = 3, nstart = 25)
+
+# 9. Añadir cluster y estado de muerte para visualización
+pca_scores_df <- as.data.frame(pca_scores)
+pca_scores_df$cluster <- factor(km_res$cluster)
+pca_scores_df$death_status <- factor(data_rec$recidiva_exitus,
+                                     levels = c(0,1),
+                                     labels = c("Alive","Deceased"))
+
+# 10. Plot PCA con clusters y estado de muerte
+ggplot(pca_scores_df, aes(x = Dim.1, y = Dim.2, color = cluster)) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_point(data = as.data.frame(km_res$centers), aes(x = Dim.1, y = Dim.2),
+             color = 1:3, shape = 8, size = 4) +
+  labs(title = "K-means Clustering on PCA (FAMD) with Death Status",
+       color = "Cluster") +
+  theme_minimal()
+
+
+```
+
+```{r}
+```{r}
+# Check if all deaths were relapses
+death_relapse_check <- data_reducido %>%
+  filter(recidiva_exitus == 1) %>%
+  summarise(
+    total_deaths = n(),
+    deaths_with_relapse = sum(recidiva == 1, na.rm = TRUE),
+    deaths_without_relapse = sum(recidiva == 0, na.rm = TRUE),
+    perc_with_relapse = round(100 * deaths_with_relapse / n(), 1)
+  )
+
+# Print as list
+print(as.list(death_relapse_check))
+
+# Survival rate among relapsed patients
+relapse_survival <- data_reducido %>%
+  filter(recidiva == 1) %>%
+  summarise(
+    total_relapsed = n(),
+    survived = sum(recidiva_exitus == 0, na.rm = TRUE),
+    died = sum(recidiva_exitus == 1, na.rm = TRUE),
+    survival_rate = round(100 * survived / n(), 1)
+  )
+
+# Print as list
+print(as.list(relapse_survival))
+
+```
+
+```{r}
+# Define cluster labels
+clusters_full <- km_res$cluster
+
+data_rec <- data_rec %>%
+  mutate(cluster = factor(clusters_full),
+         cluster_label = case_when(
+           cluster == 1 ~ "Buen pronóstico",
+           cluster == 2 ~ "Alto riesgo",
+           cluster == 3 ~ "Mixto"
+         ))
+
+# Variables of interest
+vars_sig <- c("Grado", "libre_enferm", "beta_cateninap", "mlh1", 
+              "grupo_de_riesgo_definitivo", "Tributaria_a_Radioterapia",
+              "afectacion_linf", "grado_histologi", "AP_centinela_pelvico",
+              "AP_ganPelv", "tipo_histologico")
+
+# Prepare dataset for cluster summaries
+data_sig_cluster <- data_rec %>%
+  select(cluster, cluster_label, recidiva, all_of(vars_sig))
+
+cluster_summary <- data_sig_cluster %>%
+  mutate(across(-c(cluster, cluster_label, recidiva), as.factor)) %>%
+  pivot_longer(-c(cluster, cluster_label, recidiva),
+               names_to = "variable", values_to = "value") %>%
+  group_by(cluster, cluster_label, recidiva, variable, value) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(cluster, cluster_label, recidiva, variable) %>%
+  mutate(freq = n / sum(n)) %>%
+  arrange(cluster, variable, desc(freq))
+
+# Labels for variables
+labels_vars <- c(
+  "afectacion_linf" = "Afectación linfática",
+  "AP_centinela_pelvico" = "AP centinela pélvico",
+  "AP_ganPelv" = "AP ganglio pélvico",
+  "beta_cateninap" = "Beta-catenina",
+  "Grado" = "Grado tumoral",
+  "grado_histologi" = "Grado histológico",
+  "grupo_de_riesgo_definitivo" = "Grupo de riesgo",
+  "libre_enferm" = "Libre de enfermedad",
+  "mlh1" = "MLH1",
+  "tipo_histologico" = "Tipo histológico",
+  "Tributaria_a_Radioterapia" = "Radioterapia"
+)
+
+# --- Add relapse/death summary text ---
+summary_text <- paste0(
+  "Total deaths: 27 | Deaths with relapse: 11 | Deaths without relapse: 16 (40.7%)\n",
+  "Total relapsed: 29 | Survived: 18 | Died: 11 | Survival rate after relapse: 62.1%"
+)
+
+# Heatmap for recurrence
+ggplot(cluster_summary %>% filter(recidiva == 1),
+       aes(x = variable, y = cluster_label, fill = freq)) +
+  geom_tile(color = "black") +
+  scale_fill_gradient(low = "white", high = "red", name = "Proporción") +
+  scale_x_discrete(labels = labels_vars) +
+  facet_wrap(~recidiva,
+             labeller = labeller(recidiva = c("0" = "Sin recidiva", "1" = "Con recidiva"))) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Distribución de variables en pacientes por cluster y recidiva",
+       x = "Variable",
+       y = "Cluster",
+       caption = summary_text)   # <-- annotation added here
+
+# Heatmap for non-recurrence
+ggplot(cluster_summary %>% filter(recidiva == 0),
+       aes(x = variable, y = cluster_label, fill = freq)) +
+  geom_tile(color = "black") +
+  scale_fill_gradient(low = "white", high = "red", name = "Proporción") +
+  scale_x_discrete(labels = labels_vars) +
+  facet_wrap(~recidiva,
+             labeller = labeller(recidiva = c("0" = "Sin recidiva", "1" = "Con recidiva"))) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Distribución de variables en pacientes por cluster y sin recidiva",
+       x = "Variable",
+       y = "Cluster",
+       caption = summary_text)
+```
+
+```{r}
+# Beta-catenina
+data_rec$beta_cateninap <- factor(data_rec$beta_cateninap,
+                                  levels = c("0","1","2","NA"),
+                                  labels = c("Negativo","Positivo","Otro","Desconocido"))
+
+# MLH1
+data_rec$mlh1 <- factor(data_rec$mlh1,
+                        levels = c("0","2","NA"),
+                        labels = c("Negativo","Positivo","Desconocido"))
+
+# Tipo histológico (ejemplo: ajusta según tu diccionario real)
+data_rec$tipo_histologico <- factor(data_rec$tipo_histologico,
+                                    levels = c(1,2,3,4,5,7,8,9,10,12,88),
+                                    labels = c("Endometrioide","Seroso","Mucinoso","Claro","Mixto",
+                                               "Otro1","Otro2","Otro3","Otro4","Otro5","Desconocido"))
+
 ```
 
 
