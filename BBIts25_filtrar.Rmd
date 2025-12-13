@@ -4,6 +4,12 @@ author: "Ainhoa López"
 date: "2025-12-07"
 output: html_document
 ---
+```{r}
+```
+
+
+```{r}
+```
 
 
 ```{r}
@@ -24,7 +30,7 @@ suppressPackageStartupMessages({
 
 
 ```{r}
-data <- read_excel("data_hack.xlsx")
+data <- read_excel("IQ_Cancer_Endometrio_merged_NMSP.xlsx")
 data
 ```
 
@@ -728,7 +734,7 @@ summary_text <- paste0(
 ggplot(cluster_summary %>% filter(recidiva == 1),
        aes(x = variable, y = cluster_label, fill = freq)) +
   geom_tile(color = "black") +
-  scale_fill_gradient(low = "white", high = "red", name = "Proporción") +
+  scale_fill_gradient(low = "white", high = "#DB0B00", name = "Proporción") +
   scale_x_discrete(labels = labels_vars) +
   facet_wrap(~recidiva,
              labeller = labeller(recidiva = c("0" = "Sin recidiva", "1" = "Con recidiva"))) +
@@ -743,7 +749,7 @@ ggplot(cluster_summary %>% filter(recidiva == 1),
 ggplot(cluster_summary %>% filter(recidiva == 0),
        aes(x = variable, y = cluster_label, fill = freq)) +
   geom_tile(color = "black") +
-  scale_fill_gradient(low = "white", high = "red", name = "Proporción") +
+  scale_fill_gradient(low = "white", high = "#DB0B00", name = "Proporción") +
   scale_x_discrete(labels = labels_vars) +
   facet_wrap(~recidiva,
              labeller = labeller(recidiva = c("0" = "Sin recidiva", "1" = "Con recidiva"))) +
@@ -781,16 +787,47 @@ heatmap_data <- non_relapsed %>%
   group_by(cluster_label, death_status, variable) %>%
   mutate(freq = n / sum(n))
 
-# 4. Plot: two heatmaps side by side
-ggplot(heatmap_data, aes(x = variable, y = cluster_label, fill = freq)) +
+# 4. Separate datasets for vivos and muertos
+heatmap_vivos <- heatmap_data %>% filter(death_status == "Vivos")
+heatmap_muertos <- heatmap_data %>% filter(death_status == "Muertos")
+
+#5. Nombres eje Y
+labels_vars <- c(
+  "afectacion_linf" = "Afectació limfàtica",
+  "AP_centinela_pelvico" = "AP centinela pèlvic",
+  "AP_ganPelv" = "AP gangli pèlvic",
+  "beta_cateninap" = "Beta-catenina",
+  "Grado" = "Grau tumoral",
+  "grado_histologi" = "Grau histològic",
+  "grupo_de_riesgo_definitivo" = "Grup de risc",
+  "libre_enferm" = "Lliure de malaltia",
+  "mlh1" = "MLH1",
+  "tipo_histologico" = "Tipus histològico",
+  "Tributaria_a_Radioterapia" = "Radioteràpia"
+)
+
+# 6. Heatmap vivos (verde)
+ggplot(heatmap_vivos, aes(x = cluster_label, y = variable, fill = freq)) +
   geom_tile(color = "black") +
-  scale_fill_gradient(low = "white", high = "red", name = "Proporción") +
-  facet_wrap(~death_status) +
+  scale_fill_gradient(low = "white", high = "#00C040", name = "Proporción") +
+  scale_y_discrete(labels=labels_vars) +
   theme_minimal(base_size = 14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(title = "Distribució de Variables vius/morts AMB PACIENTS NO RECESIVA",
-       x = "Variable",
-       y = "Cluster")
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(angle = 0)) +
+  labs(title = "Pacients vius amb pacients no recessiva",
+       x = "Cluster",
+       y = "Variable")
+
+# 7. Heatmap muertos (rojo)
+ggplot(heatmap_muertos, aes(x = cluster_label, y = variable, fill = freq)) +
+  geom_tile(color = "black") +
+  scale_fill_gradient(low = "white", high = "#DB0B00", name = "Proporción") +
+  theme_minimal(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_blank()) +  # opcional:ocultar nombres de variables
+  labs(title = "Pacients morts amb pacients no recessiu",
+       x = "Cluster",
+       y = "")
 
 ```
 
@@ -799,8 +836,8 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 
-# 1. Subset: patients who relapsed
-relapsed <- data_rec %>%
+# 1. Subset: patients with no relapse
+non_relapsed <- data_rec %>%
   filter(recidiva == 1)
 
 # 2. Variables of interest
@@ -809,8 +846,9 @@ vars_sig <- c("Grado", "libre_enferm", "beta_cateninap", "mlh1",
               "afectacion_linf", "grado_histologi", "AP_centinela_pelvico",
               "AP_ganPelv", "tipo_histologico")
 
+
 # 3. Prepare summary frequencies by cluster and death status
-heatmap_data <- relapsed %>%
+heatmap_data <- non_relapsed %>%
   select(cluster, cluster_label, recidiva_exitus, all_of(vars_sig)) %>%
   mutate(death_status = ifelse(recidiva_exitus == 1, "Muertos", "Vivos")) %>%
   mutate(across(all_of(vars_sig), as.factor)) %>%
@@ -820,17 +858,47 @@ heatmap_data <- relapsed %>%
   group_by(cluster_label, death_status, variable) %>%
   mutate(freq = n / sum(n))
 
-# 4. Plot heatmap
-ggplot(heatmap_data, aes(x = variable, y = cluster_label, fill = freq)) +
-  geom_tile(color = "black") +
-  scale_fill_gradient(low = "white", high = "red", name = "Proporción") +
-  facet_wrap(~death_status) +
-  theme_minimal(base_size = 14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(title = "Distribució de Variables vius/morts AMB PACIENTS RECESIVA",
-       x = "Variable",
-       y = "Cluster")
+# 4. Separate datasets for vivos and muertos
+heatmap_vivos <- heatmap_data %>% filter(death_status == "Vivos")
+heatmap_muertos <- heatmap_data %>% filter(death_status == "Muertos")
 
+# 5. Nombres 
+labels_vars <- c(
+  "afectacion_linf" = "Afectació limfàtica",
+  "AP_centinela_pelvico" = "AP centinela pèlvic",
+  "AP_ganPelv" = "AP gangli pèlvic",
+  "beta_cateninap" = "Beta-catenina",
+  "Grado" = "Grau tumoral",
+  "grado_histologi" = "Grau histològic",
+  "grupo_de_riesgo_definitivo" = "Grup de risc",
+  "libre_enferm" = "Lliure de malaltia",
+  "mlh1" = "MLH1",
+  "tipo_histologico" = "Tipus histològico",
+  "Tributaria_a_Radioterapia" = "Radioteràpia"
+)
+
+# 5. Heatmap vivos (verde)
+ggplot(heatmap_vivos, aes(x = cluster_label, y = variable, fill = freq)) +
+  geom_tile(color = "black") +
+  scale_fill_gradient(low = "white", high = "#00C040", name = "Proporció") +
+  scale_y_discrete(labels=labels_vars) +
+  theme_minimal(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(angle = 0)) +
+  labs(title = "Pacients vius amb pacients no recessiva",
+       x = "Cluster",
+       y = "Variable")
+
+# 6. Heatmap muertos (rojo)
+ggplot(heatmap_muertos, aes(x = cluster_label, y = variable, fill = freq)) +
+  geom_tile(color = "black") +
+  scale_fill_gradient(low = "white", high = "#DB0B00", name = "Proporció") +
+  theme_minimal(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_blank()) +  # opcional: ocultar nombres de variables
+  labs(title = "Pacients morts amb pacients no recessiva",
+       x = "Cluster",
+       y = "")
 ```
 
 ```{r}
