@@ -1,184 +1,281 @@
+# =========================
+# LIBRARIES
+# =========================
 library(shiny)
 library(shinythemes)
-library(readxl)
+library(readr)
 library(dplyr)
 library(ggplot2)
 library(DT)
-library(survival)
-library(shinyWidgets)   # <-- THIS LINE
+library(shinyWidgets)
+
 # =========================
 # UI
 # =========================
 ui <- fluidPage(
   theme = shinytheme("flatly"),
-  titlePanel("Predicción de Recidiva en Cáncer de Endometrio"),
   
   tags$head(
     tags$style(HTML("
-      /* ----------Sidebar layout: fixed header + scrollable body + fixed footer ---------- */
-
-      /* Remove default padding that can cause awkward scroll behavior */
-      .well { padding: 12px; }
-
-      /* The sidebar panel becomes a flex column: header (mode selector), body (scroll), footer (visualizacion) */
-      .sidebar-flex {
-        height: calc(100vh - 140px);  /* tweak if your titlePanel height differs */
+      /* Main container with sidebar */
+      .app-wrapper {
+        display: flex;
+        min-height: calc(100vh - 50px);
+      }
+      
+      /* Sidebar styling */
+      .sidebar-panel {
+        width: 280px;
+        min-width: 280px;
+        background: #f8f9fa;
+        border-right: 1px solid #dee2e6;
+        padding: 15px;
+        overflow-y: auto;
+        max-height: calc(100vh - 50px);
+        transition: all 0.3s ease;
+      }
+      
+      body.sidebar-collapsed .sidebar-panel {
+        width: 0;
+        min-width: 0;
+        padding: 0;
+        border: none;
+        overflow: hidden;
+      }
+      
+      /* Main content area */
+      .main-content {
+        flex: 1;
         display: flex;
         flex-direction: column;
+        overflow: hidden;
       }
-
-      /* Scroll only the long form section */
-      .sidebar-scroll {
-        flex: 1 1 auto;
+      
+      .navbar-wrapper {
+        flex-shrink: 0;
+      }
+      
+      .tab-content-wrapper {
+        flex: 1;
+        overflow: auto;
+        padding: 15px;
+      }
+      
+      .sidebar-panel .form-group {
+        margin-bottom: 15px;
+      }
+      
+      /* Table container - prevent overflow */
+      .table-container {
+        width: 100%;
+        overflow-x: auto;
         overflow-y: auto;
-        overflow-x: hidden;
-        padding-right: 6px; /* space for scrollbar */
+        max-height: calc(100vh - 200px);
+        position: relative;
       }
-
-      /* Keep bottom section always visible */
-      .sidebar-footer {
-        flex: 0 0 auto;
-        border-top: 1px solid rgba(0,0,0,0.08);
-        padding-top: 10px;
-        margin-top: 10px;
+      
+      .dataTables_wrapper {
+        width: 100% !important;
+        overflow-x: auto !important;
       }
-
-      /* Slightly tighter spacing between inputs */
-      .sidebar-scroll .form-group { margin-bottom: 10px; }
-
-      /* ---------- Prettify shinyWidgets radioGroupButtons ---------- */
-      /* Make buttons look like modern rounded pills */
-      .radioGroupButtons .btn {
-        border-radius: 999px !important;
-        padding: 8px 12px !important;
-        font-weight: 600 !important;
+      
+      .dataTables_scroll {
+        width: 100% !important;
+        overflow-x: auto !important;
       }
-
-      /* Reduce overall button group height a touch */
-      .radioGroupButtons .btn-group { width: 100%; }
-
-      /* Improve active button contrast (Flatly-friendly) */
-      .radioGroupButtons .btn.active {
-        box-shadow: 0 2px 10px rgba(0,0,0,0.12) !important;
+      
+      table.dataTable {
+        width: 100% !important;
+        margin: 0 !important;
       }
-
-      /* Make the action button (Crear registro) stand out and full-width */
-      #crear_manual {
-        width: 100%;
-        border-radius: 10px;
-        font-weight: 700;
+      
+      table.dataTable thead th,
+      table.dataTable tbody td {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 300px;
+        padding: 8px !important;
       }
-
-      /* Make train button full-width too (optional) */
-      #train {
-        width: 100%;
-        border-radius: 10px;
-        font-weight: 700;
+      
+      /* Plot cards */
+      .plot-card {
+        background: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+      }
+      
+      /* Responsive adjustments */
+      @media (max-width: 768px) {
+        .sidebar-panel {
+          position: absolute;
+          z-index: 1000;
+          height: calc(100vh - 50px);
+          box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+        }
+        body.sidebar-collapsed .sidebar-panel {
+          display: none;
+        }
       }
     "))
   ),
   
-  sidebarLayout(
-    sidebarPanel(
-      width = 3,
-      div(
-        class = "sidebar-flex",
-        
-        # --- Header: mode selector always visible ---
-        radioGroupButtons(
-          inputId = "modo_datos",
-          label = "Origen de los datos",
-          choices = c(
-            "Subir Excel" = "excel",
-            "Introducir manualmente" = "manual"
-          ),
-          selected = "excel",
-          status = "primary",
-          size = "sm",
-          justified = TRUE,
-          checkIcon = list(yes = icon("check"))
+  # Main wrapper
+  div(
+    class = "app-wrapper",
+    # Sidebar (persistent across pages)
+    div(
+      class = "sidebar-panel",
+      actionButton(
+        "toggle_sidebar",
+        label = NULL,
+        icon = icon("bars"),
+        class = "btn-sm mb-3",
+        style = "width: 100%;",
+        title = "Ocultar/mostrar panel lateral"
+      ),
+      
+      radioGroupButtons(
+        inputId = "modo_datos",
+        label = "Origen de los datos",
+        choices = c("Subir CSV" = "csv", "Introducir manualmente" = "manual"),
+        selected = "csv",
+        status = "primary",
+        size = "sm",
+        justified = TRUE
+      ),
+      
+      hr(),
+      
+      conditionalPanel(
+        condition = "input.modo_datos == 'csv'",
+        fileInput("file", "Sube tu CSV (.csv)", accept = ".csv"),
+        hr()
+      ),
+      
+      conditionalPanel(
+        condition = "input.modo_datos == 'manual'",
+        numericInput("edad_m", "Edad", value = 60, min = 18, max = 120),
+        numericInput("imc_m", "IMC", value = 25, min = 10, max = 60, step = 0.1),
+        selectInput(
+          "tipo_histologico_m",
+          "Tipo histológico",
+          choices = c("Endometrioide", "Seroso", "Claro", "Mixto", "Otro"),
+          selected = "Endometrioide"
         ),
-        
-        hr(),
-        
-        # --- Body: scrollable content (so footer stays visible) ---
+        actionButton("crear_manual", "Crear registro", class = "btn-primary btn-block"),
+        hr()
+      ),
+      
+      # Data status indicator
+      conditionalPanel(
+        condition = "output.data_loaded",
         div(
-          class = "sidebar-scroll",
-          
-          # Inputs para Excel
-          conditionalPanel(
-            condition = "input.modo_datos == 'excel'",
-            fileInput("file", "Sube tu Excel (.xlsx)", accept = ".xlsx"),
-            selectInput("sheet", "Hoja a usar", choices = NULL),
-            actionButton("train", "Entrenar modelo")
-          ),
-          
-          # Inputs manuales
-          conditionalPanel(
-            h4("Introduce un caso clínico manualmente"),
-            condition = "input.modo_datos == 'manual'",
-            numericInput("edad_m", "Edad", value = 60, min = 18),
-            numericInput("imc_m", "IMC", value = 25, min = 10, max = 60),
-            selectInput("tipo_histologico_m", "Tipo histológico",
-                        choices = c("Endometrioide","Seroso","Claro","Mixto","Otro")),
-            selectInput("histo_defin_m", "Histología definitiva",
-                        choices = c("Endometrioide","Seroso","Claro","Mixto","Otro")),
-            selectInput("Grado_m", "Grado (biopsia)", choices = c("G1","G2","G3")),
-            selectInput("grado_histologi_m", "Grado histológico final", choices = c("G1","G2","G3")),
-            numericInput("tamano_tumoral_m", "Tamaño tumoral (mm)", value = 30, min = 1),
-            selectInput("ecotv_infiltsub_m", "Infiltración subserosa", choices = c("<50%","≥50%")),
-            selectInput("metasta_distan_m", "Metástasis a distancia", choices = c(0,1)),
-            selectInput("afectacion_linf_m", "Afectación linfática", choices = c(0,1)),
-            selectInput("AP_centinela_pelvico_m", "AP centinela pélvico", choices = c(0,1)),
-            selectInput("AP_ganPelv_m", "AP ganglio pélvico", choices = c(0,1)),
-            selectInput("p53_molecular_m", "p53 molecular", choices = c("Positivo","Negativo")),
-            selectInput("p53_ihq_m", "p53 IHQ", choices = c("Positivo","Negativo")),
-            selectInput("mut_pole_m", "Mutación POLE", choices = c("Positivo","Negativo")),
-            selectInput("beta_cateninap_m", "Beta catenina", choices = c("Positivo","Negativo")),
-            selectInput("msh2_m", "MSH2", choices = c("Positivo","Negativo")),
-            selectInput("msh6_m", "MSH6", choices = c("Positivo","Negativo")),
-            selectInput("pms2_m", "PMS2", choices = c("Positivo","Negativo")),
-            selectInput("mlh1_m", "MLH1", choices = c("Positivo","Negativo")),
-            selectInput("grupo_de_riesgo_definitivo_m", "Grupo de riesgo definitivo",
-                        choices = c("Bajo","Intermedio","Alto")),
-            selectInput("asa_m", "ASA", choices = c("I","II","III","IV")),
-            actionButton("crear_manual", "Crear registro")
-          )
-        ),
-        
-        # --- Footer: always visible (Visualización) ---
-        div(
-          class = "sidebar-footer",
-          selectInput(
-            "grafico_sel",
-            "Visualización",
-            choices = c(
-              "Curva de supervivencia (KM)" = "km",
-              "Distribución por grupos de edad" = "edad"
-            )
+          class = "alert alert-success",
+          style = "margin-top: 15px; padding: 8px; font-size: 12px;",
+          HTML("<strong>✓ Datos cargados</strong>"),
+          br(),
+          textOutput("data_info", inline = FALSE)
+        )
+      ),
+      
+      hr(),
+      
+      # Variable selector in sidebar
+      conditionalPanel(
+        condition = "output.data_loaded",
+        h5("Variables para análisis"),
+        pickerInput(
+          "dist_fields",
+          "Selecciona variables",
+          choices = NULL,
+          multiple = TRUE,
+          options = list(
+            `actions-box` = TRUE,
+            `live-search` = TRUE,
+            `selected-text-format` = "count > 3",
+            size = 10
           )
         )
       )
     ),
     
-    mainPanel(
-      conditionalPanel(
-        condition = "input.grafico_sel == 'km'",
-        plotOutput("km_plot", height = "450px")
-      ),
-      conditionalPanel(
-        condition = "input.grafico_sel == 'edad'",
-        plotOutput("plot_edad", height = "450px")
-      ),
-      
-      hr(),
-      
-      tabsetPanel(
-        tabPanel("Preview datos", DTOutput("table")),
-        tabPanel("Predicción", verbatimTextOutput("prediction_text"))
+    # Main content area with navbar
+    div(
+      class = "main-content",
+      div(
+        class = "navbar-wrapper",
+        navbarPage(
+          title = "Predicción de Recidiva en Cáncer de Endometrio",
+          id = "main_navbar",
+          selected = "Preview datos",
+          
+          tabPanel(
+            "Preview datos",
+            value = "preview",
+            div(
+              class = "tab-content-wrapper",
+              conditionalPanel(
+                condition = "!output.data_loaded",
+                div(
+                  class = "alert alert-info text-center",
+                  style = "margin-top: 50px;",
+                  HTML("<h4>No hay datos cargados</h4><p>Sube un archivo CSV o introduce datos manualmente</p>")
+                )
+              ),
+              conditionalPanel(
+                condition = "output.data_loaded",
+                div(
+                  class = "table-container",
+                  DTOutput("table")
+                )
+              )
+            )
+          ),
+          
+          tabPanel(
+            "Distribución por grupos",
+            value = "distribucion",
+            div(
+              class = "tab-content-wrapper",
+              conditionalPanel(
+                condition = "!output.data_loaded",
+                div(
+                  class = "alert alert-info text-center",
+                  style = "margin-top: 50px;",
+                  HTML("<h4>No hay datos cargados</h4><p>Carga datos primero para ver las distribuciones</p>")
+                )
+              ),
+              conditionalPanel(
+                condition = "output.data_loaded",
+                uiOutput("dist_plots")
+              )
+            )
+          )
+        )
       )
     )
-  )
+  ),
+  
+  tags$script(HTML("
+    $(document).ready(function() {
+      Shiny.addCustomMessageHandler('toggleSidebar', function(message) {
+        document.body.classList.toggle('sidebar-collapsed');
+        setTimeout(function() {
+          window.dispatchEvent(new Event('resize'));
+          if ($.fn.DataTable) {
+            $('.dataTable').each(function() {
+              if ($.fn.DataTable.isDataTable(this)) {
+                $(this).DataTable().columns.adjust().draw();
+              }
+            });
+          }
+        }, 300);
+      });
+    });
+  "))
 )
 
 # =========================
@@ -186,144 +283,236 @@ ui <- fluidPage(
 # =========================
 server <- function(input, output, session) {
   
-  rv <- reactiveValues(data = NULL, model = NULL)
+  # Reactive data storage
+  data <- reactiveVal(NULL)
   
-  # -----------------------------
-  # Excel: leer archivo
-  # -----------------------------
-  observeEvent(input$file, {
-    req(input$file)
-    sheets <- excel_sheets(input$file$datapath)
-    updateSelectInput(session, "sheet", choices = sheets)
+  # Data status indicator
+  output$data_loaded <- reactive({
+    !is.null(data())
   })
+  outputOptions(output, "data_loaded", suspendWhenHidden = FALSE)
   
-  observeEvent(input$sheet, {
-    req(input$file, input$sheet)
-    rv$data <- as.data.frame(
-      read_excel(input$file$datapath, sheet = input$sheet)
+  # Data info text
+  output$data_info <- renderText({
+    req(data())
+    df <- data()
+    paste0(
+      "Datos: ", nrow(df), " filas, ", ncol(df), " columnas"
     )
   })
   
-  # -----------------------------
-  # Manual: crear dataset de una fila
-  # -----------------------------
+  # Load CSV file
+  observeEvent(input$file, {
+    req(input$file)
+    tryCatch({
+      df <- read_csv(input$file$datapath, show_col_types = FALSE)
+      data(as.data.frame(df))
+      showNotification(
+        paste("Archivo cargado:", nrow(df), "filas,", ncol(df), "columnas"),
+        type = "message",
+        duration = 3
+      )
+    }, error = function(e) {
+      showNotification(
+        paste("Error al leer el archivo CSV:", e$message),
+        type = "error",
+        duration = 5
+      )
+    })
+  })
+  
+  # Add manual entry
   observeEvent(input$crear_manual, {
-    req(input$modo_datos == "manual")
+    # Validate inputs
+    if (is.na(input$edad_m) || input$edad_m < 18 || input$edad_m > 120) {
+      showNotification("Edad debe estar entre 18 y 120 años", type = "error")
+      return()
+    }
+    if (is.na(input$imc_m) || input$imc_m < 10 || input$imc_m > 60) {
+      showNotification("IMC debe estar entre 10 y 60", type = "error")
+      return()
+    }
     
     new_row <- data.frame(
       edad = input$edad_m,
       imc = input$imc_m,
       tipo_histologico = input$tipo_histologico_m,
-      histo_defin = input$histo_defin_m,
-      Grado = input$Grado_m,
-      grado_histologi = input$grado_histologi_m,
-      tamano_tumoral = input$tamano_tumoral_m,
-      ecotv_infiltsub = input$ecotv_infiltsub_m,
-      metasta_distan = input$metasta_distan_m,
-      afectacion_linf = input$afectacion_linf_m,
-      AP_centinela_pelvico = input$AP_centinela_pelvico_m,
-      AP_ganPelv = input$AP_ganPelv_m,
-      p53_molecular = input$p53_molecular_m,
-      p53_ihq = input$p53_ihq_m,
-      mut_pole = input$mut_pole_m,
-      beta_cateninap = input$beta_cateninap_m,
-      msh2 = input$msh2_m,
-      msh6 = input$msh6_m,
-      pms2 = input$pms2_m,
-      mlh1 = input$mlh1_m,
-      grupo_de_riesgo_definitivo = input$grupo_de_riesgo_definitivo_m,
-      asa = input$asa_m,
       stringsAsFactors = FALSE
     )
     
-    rv$data <- dplyr::bind_rows(rv$data, new_row)
-    
-    showNotification("Registro manual creado", type = "message")
-    
+    current_data <- data()
+    if (is.null(current_data)) {
+      data(new_row)
+      showNotification("Primer registro creado", type = "message")
+    } else {
+      data(bind_rows(current_data, new_row))
+      showNotification("Registro agregado correctamente", type = "message")
+    }
   })
   
-  # -----------------------------
-  # Preview de datos
-  # -----------------------------
+  # Toggle sidebar
+  observeEvent(input$toggle_sidebar, {
+    session$sendCustomMessage("toggleSidebar", list())
+  })
+  
+  # Update variable picker when data changes
+  observeEvent(data(), {
+    req(data())
+    cols <- names(data())
+    if (length(cols) > 0) {
+      updatePickerInput(
+        session,
+        "dist_fields",
+        choices = cols,
+        selected = cols[1:min(3, length(cols))]
+      )
+    }
+  })
+  
+  # Preview table (limit columns for performance)
+  MAX_PREVIEW_COLS <- 12
+  
+  preview_data <- reactive({
+    req(data())
+    df <- data()
+    if (ncol(df) > MAX_PREVIEW_COLS) {
+      df[, seq_len(MAX_PREVIEW_COLS), drop = FALSE]
+    } else {
+      df
+    }
+  })
+  
   output$table <- renderDT({
-    req(rv$data)
-    datatable(rv$data)
-  })
-
-  # -----------------------------
-  # Gráfico KM
-  # -----------------------------
-  output$km_plot <- renderPlot({
-    req(rv$model)
-    ggsurvplot(survfit(rv$model),
-               conf.int = TRUE,
-               risk.table = TRUE,
-               ggtheme = theme_minimal())
-  })
-  
-  # -----------------------------
-  # Gráfico Edad
-  # -----------------------------
-  output$plot_edad <- renderPlot({
-    req(rv$data)
-    df <- rv$data
-    if(!"edad" %in% names(df)) return(NULL)
+    req(preview_data())
+    df <- preview_data()
     
-    df_plot <- df %>%
-      mutate(grupo_edad = cut(edad,
-                              breaks = c(-Inf,29,49,Inf),
-                              labels = c("0-29","30-49","+50"))) %>%
-      group_by(grupo_edad) %>%
-      summarise(Frecuencia = n())
-    
-    ggplot(df_plot, aes(x = grupo_edad, y = Frecuencia)) +
-      geom_bar(stat = "identity", fill = "steelblue", color = "black") +
-      labs(title = "Distribución por grupos de edad",
-           x = "Grupo de edad", y = "Frecuencia") +
-      theme_minimal()
-  })
-  
-  # -----------------------------
-  # Predicción
-  # -----------------------------
-  observeEvent(input$predict_btn, {
-    req(rv$model)
-    
-    newcase <- data.frame(
-      Tipo_hist_biopsia = input$Tipo_hist_in,
-      Grado_biopsia = input$Grado_in,
-      Infiltracion_miometrial = input$Infiltracion_in,
-      CA125 = input$CA125_in,
-      Metastasis_distancia = input$Metastasis_in,
-      Riesgo_preIQ = input$Riesgo_preIQ_in,
-      Edad = input$Edad_in,
-      PR = input$PR_in,
-      ER = input$ER_in,
-      Betacatenina = input$Beta_in
+    datatable(
+      df,
+      rownames = FALSE,
+      filter = "top",
+      options = list(
+        scrollX = TRUE,
+        scrollY = "calc(100vh - 250px)",
+        scrollCollapse = TRUE,
+        paging = TRUE,
+        pageLength = 15,
+        lengthChange = TRUE,
+        lengthMenu = c(10, 15, 25, 50, 100),
+        dom = "lfrtip",
+        autoWidth = FALSE,
+        columnDefs = list(
+          list(
+            targets = "_all",
+            className = "dt-center",
+            width = "150px"
+          )
+        )
+      ),
+      selection = "none"
     )
-    
-    newcase[] <- lapply(newcase, as.factor)
-    
-    lp <- predict(rv$model, newdata = newcase, type = "lp")
-    base <- basehaz(rv$model, centered = FALSE)
-    
-    S <- function(t) exp(-approx(base$time, base$hazard, xout = t)$y)
-    
-    p1 <- 1 - S(365)^exp(lp)
-    p3 <- 1 - S(365*3)^exp(lp)
-    p5 <- 1 - S(365*5)^exp(lp)
-    
-    output$prediction_text <- renderPrint({
-      cat(sprintf(
-        "Probabilidad de recidiva:\n1 año: %.1f%%\n3 años: %.1f%%\n5 años: %.1f%%",
-        p1*100, p3*100, p5*100))
-    })
   })
   
+  # Distribution plot function
+  make_distribution_plot <- function(df, field) {
+    if (!field %in% names(df)) {
+      return(
+        ggplot() +
+          annotate("text", x = 0.5, y = 0.5, label = "Variable no encontrada", size = 5) +
+          theme_void()
+      )
+    }
+    
+    v <- df[[field]]
+    v <- v[!is.na(v)]  # Remove NA values
+    
+    if (length(v) == 0) {
+      return(
+        ggplot() +
+          annotate("text", x = 0.5, y = 0.5, label = "Sin datos disponibles", size = 5) +
+          theme_void()
+      )
+    }
+    
+    if (is.numeric(v)) {
+      ggplot(df, aes(x = .data[[field]])) +
+        geom_histogram(bins = min(20, length(unique(v))), fill = "steelblue", color = "white", alpha = 0.8, na.rm = TRUE) +
+        labs(title = field, x = NULL, y = "Frecuencia") +
+        theme_minimal() +
+        theme(
+          plot.title = element_text(face = "bold", size = 12),
+          panel.grid.minor = element_blank()
+        )
+    } else {
+      # Limit factor levels for better display
+      v_factor <- factor(v)
+      if (length(levels(v_factor)) > 20) {
+        # Keep top 19 most frequent and group others
+        freq_table <- table(v_factor)
+        top_levels <- names(sort(freq_table, decreasing = TRUE)[1:19])
+        v_factor <- factor(
+          ifelse(v_factor %in% top_levels, as.character(v_factor), "Otros"),
+          levels = c(top_levels, "Otros")
+        )
+      }
+      
+      df_plot <- data.frame(x = v_factor)
+      ggplot(df_plot, aes(x = x)) +
+        geom_bar(fill = "steelblue", alpha = 0.8, na.rm = TRUE) +
+        labs(title = field, x = NULL, y = "Frecuencia") +
+        theme_minimal() +
+        theme(
+          plot.title = element_text(face = "bold", size = 12),
+          axis.text.x = element_text(angle = 45, hjust = 1),
+          panel.grid.minor = element_blank()
+        )
+    }
+  }
+  
+  # Render distribution plots
+  output$dist_plots <- renderUI({
+    req(data())
+    
+    fields <- input$dist_fields
+    if (is.null(fields) || length(fields) == 0) {
+      return(
+        div(
+          class = "text-muted text-center p-4",
+          "Selecciona una o más variables para visualizar"
+        )
+      )
+    }
+    
+    tagList(
+      lapply(fields, function(f) {
+        div(
+          class = "plot-card",
+          plotOutput(
+            outputId = paste0("dist_", f),
+            height = "280px"
+          )
+        )
+      })
+    )
+  })
+  
+  # Generate plots dynamically
+  observe({
+    req(data())
+    fields <- input$dist_fields
+    if (is.null(fields) || length(fields) == 0) return()
+    
+    for (f in fields) {
+      local({
+        field <- f
+        output[[paste0("dist_", field)]] <- renderPlot({
+          make_distribution_plot(data(), field)
+        })
+      })
+    }
+  })
 }
 
 # =========================
 # RUN APP
 # =========================
-shinyApp(ui, server)
-
+shinyApp(ui = ui, server = server)
