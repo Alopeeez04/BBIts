@@ -1,5 +1,4 @@
-# Instala paquetes si no los tienes
-# install.packages(c("shiny","readxl","survival","survminer","glmnet","shinythemes","DT"))
+# install.packages(c("shiny","readxl","survival","survminer","glmnet","shinythemes","DT","forcats","lubridate"))
 
 library(shiny)
 library(readxl)
@@ -9,6 +8,9 @@ library(glmnet)
 library(shinythemes)
 library(DT)
 library(dplyr)
+library(forcats)
+library(lubridate)
+library(tidyr)
 
 # UI
 ui <- fluidPage(
@@ -30,21 +32,18 @@ ui <- fluidPage(
       actionButton("train", "Entrenar model"),
       hr(),
       h4("Introdueix un cas clínic"),
-      selectInput('Grado_in','Grado', choices = c('Bajo','Alto')),
-      selectInput('libre_enferm_in','Libre de enfermedad', choices = c('Si','No','Desconocido')),
-      selectInput('beta_cateninap_in','Beta catenina', choices = c('0','1','2')),
-      selectInput('mlh1_in','MLH1', choices = c('0','2')),
-      selectInput('grupo_riesgo_in','Grupo de riesgo definitivo', 
-                  choices = c('Bajo','Intermedio','Intermedio_alto','Alto','Avanzados')),
-      selectInput('Tributaria_in','Tributaria a Radioterapia', choices = c('Si','No')),
-      selectInput('afectacion_linf_in','Afectación linfática', choices = c('Si','No')),
-      selectInput('grado_histologi_in','Grado histológico', choices = c('Bajo','Alto')),
-      selectInput('AP_centinela_in','AP centinela pélvico', 
-                  choices = c('pN0','pN0(i+)','pN1(mi)','pN1','pNx')),
-      selectInput('AP_ganPelv_in','AP ganglios pélvicos', 
-                  choices = c('Negativo','Cels_aisladas','Macrometastasis')),
-      selectInput('tipo_histologico_in','Tipo histológico', 
-                  choices = c('1','2','3','4','5','7','8','9','10','12','88')),
+      # Choices populated dynamically after loading data
+      selectInput('Grado_in','Grado', choices = NULL),
+      selectInput('libre_enferm_in','Libre de enfermedad', choices = NULL),
+      selectInput('beta_cateninap_in','Beta catenina', choices = NULL),
+      selectInput('mlh1_in','MLH1', choices = NULL),
+      selectInput('grupo_riesgo_in','Grupo de riesgo definitivo', choices = NULL),
+      selectInput('Tributaria_in','Tributaria a Radioterapia', choices = NULL),
+      selectInput('afectacion_linf_in','Afectación linfática', choices = NULL),
+      selectInput('grado_histologi_in','Grado histológico', choices = NULL),
+      selectInput('AP_centinela_in','AP centinela pélvico', choices = NULL),
+      selectInput('AP_ganPelv_in','AP ganglios pélvicos', choices = NULL),
+      selectInput('tipo_histologico_in','Tipo histológico', choices = NULL),
       dateInput("surgery_date", "Data de la cirurgia", 
                 value = Sys.Date(), format = "dd/mm/yyyy"),
       actionButton("predict_btn", "Calcular probabilitat")
@@ -73,42 +72,68 @@ server <- function(input, output, session) {
     updateSelectInput(session, "sheet", choices = sheets)
   })
   
-  # Cargar datos
+  # Cargar datos, recodificar como en el pipeline, construir tabla empírica y clusters
   observeEvent(input$sheet, {
     req(input$file, input$sheet)
     df <- read_excel(input$file$datapath, sheet = input$sheet)
     df <- as.data.frame(df)
     
-    # --- replicate your pipeline steps here ---
-    # Select numeric variables for PCA
-    numeric_vars <- df %>%
-      dplyr::select(where(is.numeric)) %>%
-      na.omit()
+    # Recodificación alineada con el pipeline (asegura etiquetas exactas)
+    df <- df %>%
+      mutate(
+        # Factors con etiquetas
+        Grado = factor(Grado, levels = c(1,2), labels = c("Bajo","Alto")),
+        grado_histologi = factor(grado_histologi, levels = c(1,2), labels = c("Bajo","Alto")),
+        libre_enferm = factor(libre_enferm, levels = c(0,1,2), labels = c("No","Si","Desconocido")),
+        Tributaria_a_Radioterapia = factor(Tributaria_a_Radioterapia, levels = c(0,1), labels = c("No","Si")),
+        afectacion_linf = factor(afectacion_linf, levels = c(0,1), labels = c("No","Si")),
+        AP_centinela_pelvico = factor(AP_centinela_pelvico, levels = c(0,1,2,3,4),
+                                      labels = c("pN0","pN0(i+)","pN1(mi)","pN1","pNx")),
+        AP_ganPelv = factor(AP_ganPelv, levels = c(0,1,2,3),
+                            labels = c("Negativo","Cels_aisladas","Micrometastasis","Macrometastasis")),
+        grupo_de_riesgo_definitivo = factor(grupo_de_riesgo_definitivo, levels = c(1,2,3,4,5),
+                                            labels = c("Bajo","Intermedio","Intermedio_alto","Alto","Avanzados"))
+      )
     
-    numeric_scaled <- scale(numeric_vars)
+    # PCA + clustering sobre numéricas (simple y reproducible)
+    numeric_vars <- df %>% dplyr::select(where(is.numeric)) %>% tidyr::drop_na()
+    # Si no hay suficientes columnas numéricas, evitar fallo
+    if (ncol(numeric_vars) >= 2 && nrow(numeric_vars) >= 3) {
+      numeric_scaled <- scale(numeric_vars)
+      pca_res <- prcomp(numeric_scaled, center = TRUE, scale. = TRUE)
+      set.seed(123)
+      km_res <- kmeans(pca_res$x[,1:2], centers = 3, nstart = 25)
+      clusters_full <- km_res$cluster
+    } else {
+      # Fallback: todos al mismo cluster si los datos no permiten PCA/Kmeans
+      clusters_full <- rep(1, nrow(df))
+    }
     
-    # PCA
-    pca_res <- prcomp(numeric_scaled, center = TRUE, scale. = TRUE)
-    
-    # K-means clustering on first 2 PCs
-    set.seed(123)
-    pca_scores <- pca_res$x[,1:2]
-    km_res <- kmeans(pca_scores, centers = 3, nstart = 25)
-    
-    clusters_full <- km_res$cluster
-    
-    # Add cluster and cluster_label to df
     df <- df %>%
       mutate(cluster = factor(clusters_full),
              cluster_label = case_when(
                cluster == 1 ~ "Buen pronóstico",
                cluster == 2 ~ "Alto riesgo",
-               cluster == 3 ~ "Mixto"
+               cluster == 3 ~ "Mixto",
+               TRUE ~ "Buen pronóstico"
              ))
     
     rv$data <- df
     
-    # Build empirical_summary_wide from df (as in your pipeline)
+    # Poblar dinámicamente los selectInput con niveles reales
+    updateSelectInput(session, "Grado_in", choices = levels(rv$data$Grado))
+    updateSelectInput(session, "libre_enferm_in", choices = levels(rv$data$libre_enferm))
+    updateSelectInput(session, "beta_cateninap_in", choices = levels(as.factor(rv$data$beta_cateninap)))
+    updateSelectInput(session, "mlh1_in", choices = levels(as.factor(rv$data$mlh1)))
+    updateSelectInput(session, "grupo_riesgo_in", choices = levels(rv$data$grupo_de_riesgo_definitivo))
+    updateSelectInput(session, "Tributaria_in", choices = levels(rv$data$Tributaria_a_Radioterapia))
+    updateSelectInput(session, "afectacion_linf_in", choices = levels(rv$data$afectacion_linf))
+    updateSelectInput(session, "grado_histologi_in", choices = levels(rv$data$grado_histologi))
+    updateSelectInput(session, "AP_centinela_in", choices = levels(rv$data$AP_centinela_pelvico))
+    updateSelectInput(session, "AP_ganPelv_in", choices = levels(rv$data$AP_ganPelv))
+    updateSelectInput(session, "tipo_histologico_in", choices = levels(as.factor(rv$data$tipo_histologico)))
+    
+    # Construir tabla empírica desde los mismos factores usados en UI
     vars_sig <- c("Grado","libre_enferm","beta_cateninap","mlh1",
                   "grupo_de_riesgo_definitivo","Tributaria_a_Radioterapia",
                   "afectacion_linf","grado_histologi","AP_centinela_pelvico",
@@ -116,6 +141,7 @@ server <- function(input, output, session) {
     
     empirical_results <- list()
     for (var in vars_sig) {
+      if (!var %in% names(df)) next
       tmp <- df %>%
         group_by(.data[[var]], cluster_label) %>%
         summarise(n = n(), .groups = "drop") %>%
@@ -131,7 +157,6 @@ server <- function(input, output, session) {
       tidyr::pivot_wider(names_from = cluster_label, values_from = prob)
   })
   
-  
   output$table <- renderDT({
     if(is.null(rv$data)){
       datatable(data.frame(Missatge="Puja un arxiu per a veure dades"))
@@ -140,24 +165,18 @@ server <- function(input, output, session) {
     }
   })
   
-  # Entrenar modelo Cox
+  # Entrenar modelo Cox (tal cual)
   observeEvent(input$train, {
     req(rv$data)
     df <- rv$data
-    # Crear tiempo y evento
     df$Tiempo <- as.numeric(ifelse(!is.na(df$Fecha_recidiva),
                                    df$Fecha_recidiva - df$Fecha_cirugia,
                                    df$Fecha_ultimo_seguimiento - df$Fecha_cirugia))
     df$Evento <- ifelse(!is.na(df$Fecha_recidiva),1,0)
-    
-    # Convertir variables a factor/numeric
     factor_vars <- c('Tipo_hist_biopsia','Grado_biopsia','Infiltracion_miometrial','Metastasis_distancia','Riesgo_preIQ','PR','ER','Betacatenina')
     for(v in factor_vars) if(v %in% names(df)) df[[v]] <- as.factor(df[[v]])
-    
-    # Fórmula
     preds <- c('Tipo_hist_biopsia','Grado_biopsia','Infiltracion_miometrial','CA125','Metastasis_distancia','Riesgo_preIQ','Edad','PR','ER','Betacatenina')
     fmla <- as.formula(paste("Surv(Tiempo,Evento) ~", paste(preds, collapse = "+")))
-    
     cox_model <- coxph(fmla, data=df)
     rv$model <- cox_model
     showNotification("Model entrenat", type="message")
@@ -173,54 +192,49 @@ server <- function(input, output, session) {
     ggsurvplot(survfit(rv$model), conf.int=TRUE, risk.table=TRUE, ggtheme=theme_minimal())
   })
   
-  # Función para calcular probabilidades de cluster
+  # Probabilidades de cluster para un paciente
   score_new_patient <- function(new_patient, empirical_table, cluster_cols) {
-    
-    # Ensure input is one-row dataframe
     stopifnot(nrow(new_patient) == 1)
-    
+    # Filtrar por variables presentes
     scores <- empirical_table %>%
-      filter(
-        variable %in% names(new_patient)
-      ) %>%
+      filter(variable %in% names(new_patient)) %>%
       rowwise() %>%
-      mutate(
-        match = as.character(new_patient[[variable]]) == value
-      ) %>%
+      mutate(match = as.character(new_patient[[variable]]) == value) %>%
       ungroup() %>%
       filter(match)
-    
-    # Aggregate cluster probabilities
+    if (nrow(scores) == 0) {
+      # Devuelve NA si no hay coincidencias
+      return(tibble(!!cluster_cols[1] := NA_real_,
+                    !!cluster_cols[2] := NA_real_,
+                    !!cluster_cols[3] := NA_real_))
+    }
     result <- scores %>%
-      summarise(
-        across(all_of(cluster_cols), ~ mean(.x, na.rm = TRUE))
-      )
-    
-    # Normalize to 100%
+      summarise(across(all_of(cluster_cols), ~ mean(.x, na.rm = TRUE)))
     result <- result %>%
-      mutate(
-        total = rowSums(across(all_of(cluster_cols))),
-        across(all_of(cluster_cols), ~ round(100 * .x / total, 1))
-      )
-    
-    # Drop the helper column safely
+      mutate(total = rowSums(across(all_of(cluster_cols))),
+             across(all_of(cluster_cols), ~ round(100 * .x / total, 1)))
     result$total <- NULL
-    
-    return(result)
+    result
   }
   
-  # === Add these functions inside server or globally ===
+  # Tiempo hasta recidiva usando fecha de recidiva para eventos
   compute_relapse_time <- function(data_rec,
                                    surgery_col = "fecha_qx",
                                    relapse_flag_col = "dx_recidiva",
                                    followup_col = "Ultima_fecha",
+                                   relapse_date_col = "fecha_de_recidi",
                                    date_format_surgery = "%d/%m/%Y") {
     data_rec %>%
       mutate(
         surgery_date  = as.Date(.data[[surgery_col]], format = date_format_surgery),
-        followup_date = as.Date(gsub(" UTC","",.data[[followup_col]])),
+        followup_date = as.Date(gsub(" UTC","", .data[[followup_col]])),
+        relapse_date  = as.Date(gsub(" UTC","", .data[[relapse_date_col]])),
         relapse_event = !is.na(.data[[relapse_flag_col]]) & .data[[relapse_flag_col]] == 1,
-        tte_days = as.numeric(followup_date - surgery_date)
+        event_date    = case_when(
+          relapse_event ~ relapse_date,
+          TRUE          ~ followup_date
+        ),
+        tte_days      = as.numeric(event_date - surgery_date)
       )
   }
   
@@ -228,16 +242,17 @@ server <- function(input, output, session) {
                                            stat = c("median","mean")) {
     stat <- match.arg(stat)
     df %>%
-      filter(relapse_event, !is.na(.data[[cluster_col]]), !is.na(tte_days), tte_days >= 0) %>%
+      filter(!is.na(.data[[cluster_col]]), !is.na(tte_days), tte_days >= 0) %>%
       group_by(.data[[cluster_col]]) %>%
       summarise(
-        n_events = n(),
+        n_events = sum(relapse_event),
         days_median = median(tte_days),
         days_mean   = mean(tte_days),
         .groups = "drop"
       ) %>%
       mutate(relapse_days = if (stat == "median") days_median else days_mean)
   }
+  
   
   combine_probs_to_days <- function(probs_named, cluster_stats,
                                     cluster_map = c("Alto riesgo" = "Alto riesgo",
@@ -268,7 +283,7 @@ server <- function(input, output, session) {
     stat <- match.arg(stat)
     probs_tbl <- score_new_patient(new_patient_df, empirical_table, cluster_cols)
     if (nrow(probs_tbl) == 0 || anyNA(probs_tbl[cluster_cols])) {
-      return(list(pred_days = NA_real_, pred_date = as.Date(NA)))
+      return(list(pred_days = NA_real_, pred_date = as.Date(NA), probs = probs_tbl, cluster_stats = NULL))
     }
     probs_named <- c(
       `Alto riesgo` = probs_tbl$`Alto riesgo`,
@@ -283,9 +298,9 @@ server <- function(input, output, session) {
          probs = probs_named, cluster_stats = cl_stats)
   }
   
-  
   # Predicción paciente
   observeEvent(input$predict_btn, {
+    req(rv$empirical_table, rv$data)
     new_patient <- data.frame(
       Grado = input$Grado_in,
       libre_enferm = input$libre_enferm_in,
@@ -308,25 +323,24 @@ server <- function(input, output, session) {
       empirical_table = rv$empirical_table,
       cluster_cols = cluster_columns,
       data_rec = rv$data,
-      surgery_date = input$surgery_date,   # <-- use chosen date
+      surgery_date = input$surgery_date,
       cluster_col = "cluster_label",
       stat = "median"
     )
     
-    
     output$prediction_text <- renderPrint({
       cat("Probabilidad de pertenencia a clusters:\n",
-          sprintf("Alto riesgo: %.1f%%\nBuen pronóstico: %.1f%%\nMixto: %.1f%%",
-                  pred$probs["Alto riesgo"], pred$probs["Buen pronóstico"], pred$probs["Mixto"]))
+          sprintf("Alto riesgo: %s%%\nBuen pronóstico: %s%%\nMixto: %s%%",
+                  ifelse(is.na(pred$probs["Alto riesgo"]), "NA", pred$probs["Alto riesgo"]),
+                  ifelse(is.na(pred$probs["Buen pronóstico"]), "NA", pred$probs["Buen pronóstico"]),
+                  ifelse(is.na(pred$probs["Mixto"]), "NA", pred$probs["Mixto"])))
       cat("\n\nPredicción temporal:\n")
       cat(sprintf("Días estimados hasta recidiva: %s\n",
                   ifelse(is.na(pred$pred_days), "NA", round(pred$pred_days))))
       cat(sprintf("Fecha estimada de recidiva: %s\n",
                   ifelse(is.na(pred$pred_date), "NA", format(pred$pred_date, "%d/%m/%Y"))))
     })
-    
   })
-  
 }
 
 # Run app
