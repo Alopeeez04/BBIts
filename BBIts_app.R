@@ -9,6 +9,7 @@ library(shinyWidgets)
 library(plotly)
 
 source("R/prediction_model.R")
+source("R/predict_days.R")
 
 load_value_mapping <- function() {
   mapping_paths <- c(
@@ -21,6 +22,9 @@ load_value_mapping <- function() {
     if (file.exists(path)) {
       tryCatch({
         mapping_df <- read_csv(path, show_col_types = FALSE, locale = locale(encoding = "UTF-8"))
+        if ("DescripciÃ³n" %in% names(mapping_df)) {
+          mapping_df <- mapping_df %>% rename(Descripción = "DescripciÃ³n")
+        }
         mapping_df$valor <- as.character(mapping_df$valor)
         mapping_df <- mapping_df %>%
           filter(!is.na(valor) & valor != "")
@@ -37,6 +41,18 @@ load_value_mapping <- function() {
 }
 
 mapping_df <- load_value_mapping()
+
+desc_lookup <- mapping_df %>%
+  distinct(variable, Descripción) %>%
+  filter(!is.na(Descripción) & Descripción != "" & !is.null(Descripción))
+
+get_field_description <- function(field, desc_lookup) {
+  matches <- desc_lookup %>% filter(variable == field)
+  if (nrow(matches) > 0) {
+    return(matches$Descripción[1])
+  }
+  return(field)
+}
 
 ui <- fluidPage(
   theme = shinytheme("flatly"),
@@ -220,13 +236,18 @@ ui <- fluidPage(
             value = "prediction",
             div(
               class = "tab-content-wrapper",
-              h3("Predicted cluster probabilities (%)"),
-              p("Probabilidades de pertenencia a cada cluster basadas en los valores ingresados en el panel lateral."),
               conditionalPanel(
                 condition = "input.modo_datos == 'manual'",
-                tableOutput("prediction_table"),
-                br(),
-                uiOutput("prediction_summary")
+                wellPanel(
+                  style = "background-color: #FFFFFF; border: 1px solid var(--color-border); border-radius: 8px; padding: 25px;",
+                  h4("Días hasta recidiva (estimación)", style = "color: var(--color-primary-dark); margin-bottom: 20px;"),
+                  uiOutput("prediction_days_card"),
+                  br(),
+                  h5("Probabilidades de cluster (%)", style = "color: var(--color-text-secondary); margin-top: 25px; margin-bottom: 15px;"),
+                  tableOutput("prediction_table"),
+                  br(),
+                  uiOutput("prediction_summary")
+                )
               ),
               conditionalPanel(
                 condition = "input.modo_datos != 'manual'",
@@ -298,7 +319,9 @@ server <- function(input, output, session) {
   
   data <- reactiveVal(NULL)
   
-  rv <- reactiveValues(pred = NULL)
+  rv <- reactiveValues(pred = NULL, pred_days = NULL)
+  
+  original_data <- reactiveVal(NULL)
   
   
   output$data_loaded <- reactive({
@@ -335,6 +358,7 @@ server <- function(input, output, session) {
       }
       
       data(df)
+      original_data(df)
       showNotification(
         paste("Archivo cargado:", nrow(df), "filas,", ncol(df), "columnas"),
         type = "message",
@@ -347,6 +371,19 @@ server <- function(input, output, session) {
         duration = 5
       )
     })
+  })
+  
+  observe({
+    if (file.exists("data/data_hack.xlsx") && is.null(original_data())) {
+      tryCatch({
+        if (requireNamespace("readxl", quietly = TRUE)) {
+          library(readxl)
+          df_orig <- read_excel("data/data_hack.xlsx")
+          original_data(as.data.frame(df_orig))
+        }
+      }, error = function(e) {
+      })
+    }
   })
   
   observeEvent(input$crear_manual, {
@@ -600,6 +637,8 @@ server <- function(input, output, session) {
     y_breaks <- pretty(c(0, max_pct), n = 5)
     y_max <- max(y_breaks)
     
+    chart_title <- get_field_description(field, desc_lookup)
+    
     p <- ggplot(df_plot, aes(x = Valor, y = Porcentaje, fill = Valor,
                               text = paste0(
                                 "Categoría: ", Valor, "\n",
@@ -608,7 +647,7 @@ server <- function(input, output, session) {
                               ))) +
       geom_bar(stat = "identity", color = config$bar_color, alpha = config$bar_alpha, width = 0.7) +
       labs(
-        title = paste("Distribució de freqüències:", field),
+        title = chart_title,
         x = field,
         y = "Percentatge (%)"
       ) +
@@ -783,8 +822,27 @@ server <- function(input, output, session) {
           duration = 5
         )
         rv$pred <- NULL
+        rv$pred_days <- NULL
       } else {
         rv$pred <- pred_result
+        
+        objs <- load_model_objects()
+        data_rec <- original_data()
+        
+        if (!is.null(data_rec)) {
+          pred_days_result <- predict_relapse_days(
+            new_patient_df = manual_case,
+            empirical_table = objs$empirical_summary_wide,
+            cluster_cols = objs$cluster_columns,
+            data_rec = data_rec,
+            surgery_date = Sys.Date(),
+            stat = "median"
+          )
+          rv$pred_days <- pred_days_result
+        } else {
+          rv$pred_days <- list(pred_days = NA_real_, pred_date = as.Date(NA))
+        }
+        
         showNotification(
           "Predicción actualizada",
           type = "message",
@@ -798,6 +856,7 @@ server <- function(input, output, session) {
         duration = 5
       )
       rv$pred <- NULL
+      rv$pred_days <- NULL
     })
   })
   
@@ -816,6 +875,84 @@ server <- function(input, output, session) {
         "Mixto" = NA
       )
     })
+  })
+  
+  prediction_days_reactive <- reactive({
+    if (!is.null(rv$pred_days)) {
+      return(rv$pred_days)
+    }
+    return(NULL)
+  })
+  
+  format_prediction <- function(pred_days_result) {
+    if (is.null(pred_days_result) || is.na(pred_days_result$pred_days)) {
+      return(list(
+        days = NA,
+        months = NA,
+        date = NA,
+        available = FALSE
+      ))
+    }
+    
+    days <- round(pred_days_result$pred_days)
+    months <- round(days / 30.44, 1)
+    pred_date <- pred_days_result$pred_date
+    
+    return(list(
+      days = days,
+      months = months,
+      date = pred_date,
+      available = TRUE
+    ))
+  }
+  
+  output$prediction_days_card <- renderUI({
+    if (is.null(rv$pred_days)) {
+      return(
+        div(
+          class = "text-muted text-center",
+          style = "padding: 20px;",
+          p("Haz clic en 'Predict' para calcular la estimación de días hasta recidiva")
+        )
+      )
+    }
+    
+    formatted <- format_prediction(rv$pred_days)
+    
+    if (!formatted$available) {
+      return(
+        div(
+          class = "alert alert-warning",
+          p("No se pudo calcular la estimación de días. Asegúrate de que el archivo de datos original esté disponible.")
+        )
+      )
+    }
+    
+    tagList(
+      div(
+        style = "text-align: center; padding: 20px 0;",
+        div(
+          style = "font-size: 48px; font-weight: bold; color: var(--color-primary-dark); margin-bottom: 10px;",
+          formatted$days
+        ),
+        div(
+          style = "font-size: 18px; color: var(--color-text-secondary); margin-bottom: 15px;",
+          "días"
+        ),
+        if (!is.na(formatted$months) && formatted$months > 0) {
+          div(
+            style = "font-size: 14px; color: var(--color-text-muted); margin-top: 10px;",
+            paste0("Aproximadamente ", formatted$months, " meses")
+          )
+        },
+        if (!is.na(formatted$date)) {
+          div(
+            style = "font-size: 14px; color: var(--color-text-muted); margin-top: 10px;",
+            paste0("Fecha estimada: ", format(formatted$date, "%d/%m/%Y"))
+          )
+        }
+      )
+    )
   })
   
   output$prediction_table <- renderTable({
