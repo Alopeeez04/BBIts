@@ -4,6 +4,12 @@ author: "Ainhoa López"
 date: "2025-12-07"
 output: html_document
 ---
+```{r}
+```
+
+
+```{r}
+```
 
 
 ```{r}
@@ -728,7 +734,7 @@ summary_text <- paste0(
 ggplot(cluster_summary %>% filter(recidiva == 1),
        aes(x = variable, y = cluster_label, fill = freq)) +
   geom_tile(color = "black") +
-  scale_fill_gradient(low = "white", high = "red", name = "Proporción") +
+  scale_fill_gradient(low = "white", high = "#DB0B00", name = "Proporción") +
   scale_x_discrete(labels = labels_vars) +
   facet_wrap(~recidiva,
              labeller = labeller(recidiva = c("0" = "Sin recidiva", "1" = "Con recidiva"))) +
@@ -743,7 +749,7 @@ ggplot(cluster_summary %>% filter(recidiva == 1),
 ggplot(cluster_summary %>% filter(recidiva == 0),
        aes(x = variable, y = cluster_label, fill = freq)) +
   geom_tile(color = "black") +
-  scale_fill_gradient(low = "white", high = "red", name = "Proporción") +
+  scale_fill_gradient(low = "white", high = "#DB0B00", name = "Proporción") +
   scale_x_discrete(labels = labels_vars) +
   facet_wrap(~recidiva,
              labeller = labeller(recidiva = c("0" = "Sin recidiva", "1" = "Con recidiva"))) +
@@ -781,16 +787,47 @@ heatmap_data <- non_relapsed %>%
   group_by(cluster_label, death_status, variable) %>%
   mutate(freq = n / sum(n))
 
-# 4. Plot: two heatmaps side by side
-ggplot(heatmap_data, aes(x = variable, y = cluster_label, fill = freq)) +
+# 4. Separate datasets for vivos and muertos
+heatmap_vivos <- heatmap_data %>% filter(death_status == "Vivos")
+heatmap_muertos <- heatmap_data %>% filter(death_status == "Muertos")
+
+#5. Nombres eje Y
+labels_vars <- c(
+  "afectacion_linf" = "Afectació limfàtica",
+  "AP_centinela_pelvico" = "AP centinela pèlvic",
+  "AP_ganPelv" = "AP gangli pèlvic",
+  "beta_cateninap" = "Beta-catenina",
+  "Grado" = "Grau tumoral",
+  "grado_histologi" = "Grau histològic",
+  "grupo_de_riesgo_definitivo" = "Grup de risc",
+  "libre_enferm" = "Lliure de malaltia",
+  "mlh1" = "MLH1",
+  "tipo_histologico" = "Tipus histològico",
+  "Tributaria_a_Radioterapia" = "Radioteràpia"
+)
+
+# 6. Heatmap vivos (verde)
+ggplot(heatmap_vivos, aes(x = cluster_label, y = variable, fill = freq)) +
   geom_tile(color = "black") +
-  scale_fill_gradient(low = "white", high = "red", name = "Proporción") +
-  facet_wrap(~death_status) +
+  scale_fill_gradient(low = "white", high = "#00C040", name = "Proporción") +
+  scale_y_discrete(labels=labels_vars) +
   theme_minimal(base_size = 14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(title = "Distribució de Variables vius/morts AMB PACIENTS NO RECESIVA",
-       x = "Variable",
-       y = "Cluster")
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(angle = 0)) +
+  labs(title = "Pacients vius amb pacients no recessiva",
+       x = "Cluster",
+       y = "Variable")
+
+# 7. Heatmap muertos (rojo)
+ggplot(heatmap_muertos, aes(x = cluster_label, y = variable, fill = freq)) +
+  geom_tile(color = "black") +
+  scale_fill_gradient(low = "white", high = "#DB0B00", name = "Proporción") +
+  theme_minimal(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_blank()) +  # opcional:ocultar nombres de variables
+  labs(title = "Pacients morts amb pacients no recessiu",
+       x = "Cluster",
+       y = "")
 
 ```
 
@@ -799,8 +836,8 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 
-# 1. Subset: patients who relapsed
-relapsed <- data_rec %>%
+# 1. Subset: patients with no relapse
+non_relapsed <- data_rec %>%
   filter(recidiva == 1)
 
 # 2. Variables of interest
@@ -809,8 +846,9 @@ vars_sig <- c("Grado", "libre_enferm", "beta_cateninap", "mlh1",
               "afectacion_linf", "grado_histologi", "AP_centinela_pelvico",
               "AP_ganPelv", "tipo_histologico")
 
+
 # 3. Prepare summary frequencies by cluster and death status
-heatmap_data <- relapsed %>%
+heatmap_data <- non_relapsed %>%
   select(cluster, cluster_label, recidiva_exitus, all_of(vars_sig)) %>%
   mutate(death_status = ifelse(recidiva_exitus == 1, "Muertos", "Vivos")) %>%
   mutate(across(all_of(vars_sig), as.factor)) %>%
@@ -820,17 +858,47 @@ heatmap_data <- relapsed %>%
   group_by(cluster_label, death_status, variable) %>%
   mutate(freq = n / sum(n))
 
-# 4. Plot heatmap
-ggplot(heatmap_data, aes(x = variable, y = cluster_label, fill = freq)) +
-  geom_tile(color = "black") +
-  scale_fill_gradient(low = "white", high = "red", name = "Proporción") +
-  facet_wrap(~death_status) +
-  theme_minimal(base_size = 14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(title = "Distribució de Variables vius/morts AMB PACIENTS RECESIVA",
-       x = "Variable",
-       y = "Cluster")
+# 4. Separate datasets for vivos and muertos
+heatmap_vivos <- heatmap_data %>% filter(death_status == "Vivos")
+heatmap_muertos <- heatmap_data %>% filter(death_status == "Muertos")
 
+# 5. Nombres 
+labels_vars <- c(
+  "afectacion_linf" = "Afectació limfàtica",
+  "AP_centinela_pelvico" = "AP centinela pèlvic",
+  "AP_ganPelv" = "AP gangli pèlvic",
+  "beta_cateninap" = "Beta-catenina",
+  "Grado" = "Grau tumoral",
+  "grado_histologi" = "Grau histològic",
+  "grupo_de_riesgo_definitivo" = "Grup de risc",
+  "libre_enferm" = "Lliure de malaltia",
+  "mlh1" = "MLH1",
+  "tipo_histologico" = "Tipus histològico",
+  "Tributaria_a_Radioterapia" = "Radioteràpia"
+)
+
+# 5. Heatmap vivos (verde)
+ggplot(heatmap_vivos, aes(x = cluster_label, y = variable, fill = freq)) +
+  geom_tile(color = "black") +
+  scale_fill_gradient(low = "white", high = "#00C040", name = "Proporció") +
+  scale_y_discrete(labels=labels_vars) +
+  theme_minimal(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(angle = 0)) +
+  labs(title = "Pacients vius amb pacients no recessiva",
+       x = "Cluster",
+       y = "Variable")
+
+# 6. Heatmap muertos (rojo)
+ggplot(heatmap_muertos, aes(x = cluster_label, y = variable, fill = freq)) +
+  geom_tile(color = "black") +
+  scale_fill_gradient(low = "white", high = "#DB0B00", name = "Proporció") +
+  theme_minimal(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_blank()) +  # opcional: ocultar nombres de variables
+  labs(title = "Pacients morts amb pacients no recessiva",
+       x = "Cluster",
+       y = "")
 ```
 
 ```{r}
@@ -929,6 +997,198 @@ score_new_patient(
   empirical_table = empirical_summary_wide,
   cluster_cols = cluster_columns
 )
+
+```
+
+```{r}
+library(dplyr)
+
+score_new_patient <- function(new_patient, empirical_table, cluster_cols) {
+  
+  # Ensure input is one-row dataframe
+  stopifnot(nrow(new_patient) == 1)
+  
+  scores <- empirical_table %>%
+    filter(
+      variable %in% names(new_patient)
+    ) %>%
+    rowwise() %>%
+    mutate(
+      match = as.character(new_patient[[variable]]) == value
+    ) %>%
+    ungroup() %>%
+    filter(match)
+  
+  # Aggregate cluster probabilities
+  result <- scores %>%
+    summarise(
+      across(all_of(cluster_cols), ~ mean(.x, na.rm = TRUE))
+    )
+  
+  # Normalize to 100%
+  result <- result %>%
+    mutate(
+      total = rowSums(across(all_of(cluster_cols))),
+      across(all_of(cluster_cols), ~ round(100 * .x / total, 1))
+    )
+  
+  # Drop the helper column safely
+  result$total <- NULL
+  
+  return(result)
+}
+
+```
+
+```{r}
+new_patient <- data.frame(
+  Grado = "Alto",
+  libre_enferm = "No",
+  beta_cateninap = "1",
+  mlh1 = "0",
+  grupo_de_riesgo_definitivo = "Alto",
+  Tributaria_a_Radioterapia = "Si",
+  afectacion_linf = "Si",
+  grado_histologi = "Alto",
+  AP_centinela_pelvico = "pN1",
+  AP_ganPelv = "Macrometastasis",
+  tipo_histologico = "2",
+  stringsAsFactors = FALSE
+)
+
+cluster_columns <- c("Alto riesgo", "Buen pronóstico", "Mixto")
+
+score_new_patient(
+  new_patient = new_patient,
+  empirical_table = empirical_summary_wide,
+  cluster_cols = cluster_columns
+)
+
+```
+```{r}
+library(dplyr)
+library(lubridate)
+
+# Compute relapse time (days) from dataset
+compute_relapse_time <- function(data_rec,
+                                 surgery_col = "fecha_qx",
+                                 relapse_flag_col = "dx_recidiva",
+                                 followup_col = "Ultima_fecha",
+                                 date_format_surgery = "%d/%m/%Y") {
+  df <- data_rec %>%
+    mutate(
+      # Parse surgery date (dd/mm/yyyy)
+      surgery_date  = as.Date(.data[[surgery_col]], format = date_format_surgery),
+      # Parse follow-up date (strip " UTC" if present)
+      followup_date = as.Date(gsub(" UTC","",.data[[followup_col]])),
+      # Event indicator: relapse_flag == 1
+      relapse_event = !is.na(.data[[relapse_flag_col]]) & .data[[relapse_flag_col]] == 1,
+      # Time-to-event (days): always follow-up minus surgery
+      tte_days = as.numeric(followup_date - surgery_date)
+    )
+  df
+}
+
+# Summarize relapse days by cluster
+summarize_relapse_by_cluster <- function(df, cluster_col = "cluster_label",
+                                         stat = c("median","mean")) {
+  stat <- match.arg(stat)
+  df %>%
+    filter(relapse_event, !is.na(.data[[cluster_col]]), !is.na(tte_days), tte_days >= 0) %>%
+    group_by(.data[[cluster_col]]) %>%
+    summarise(
+      n_events = n(),
+      days_median = median(tte_days),
+      days_mean   = mean(tte_days),
+      .groups = "drop"
+    ) %>%
+    mutate(relapse_days = if (stat == "median") days_median else days_mean)
+}
+
+# Combine cluster probabilities with relapse times
+combine_probs_to_days <- function(probs_named, cluster_stats,
+                                  cluster_map = c("Alto riesgo" = "Alto riesgo",
+                                                  "Buen pronóstico" = "Buen pronóstico",
+                                                  "Mixto" = "Mixto"),
+                                  probs_in_percent = TRUE) {
+  p <- probs_named
+  if (probs_in_percent) p <- p / 100
+  combo <- tibble(
+    prob_name   = names(p),
+    prob_value  = as.numeric(p),
+    cluster_lab = unname(cluster_map[prob_name])
+  ) %>%
+    left_join(cluster_stats %>% dplyr::select(cluster_label, relapse_days),
+              by = c("cluster_lab" = "cluster_label")) %>%
+    filter(!is.na(relapse_days), !is.na(prob_value))
+  if (nrow(combo) == 0) return(NA_real_)
+  sum(combo$prob_value * combo$relapse_days) / sum(combo$prob_value)
+}
+
+# Wrapper: predict days + date
+predict_relapse_days <- function(new_patient_df,
+                                 empirical_table,
+                                 cluster_cols = c("Alto riesgo","Buen pronóstico","Mixto"),
+                                 data_rec,
+                                 surgery_date = Sys.Date(),
+                                 cluster_col = "cluster_label",
+                                 stat = c("median","mean")) {
+  stat <- match.arg(stat)
+  probs_tbl <- score_new_patient(new_patient_df, empirical_table, cluster_cols)
+  if (nrow(probs_tbl) == 0 || anyNA(probs_tbl[cluster_cols])) {
+    return(list(pred_days = NA_real_, pred_date = as.Date(NA)))
+  }
+  probs_named <- c(
+    `Alto riesgo` = probs_tbl$`Alto riesgo`,
+    `Buen pronóstico` = probs_tbl$`Buen pronóstico`,
+    `Mixto` = probs_tbl$Mixto
+  )
+  df_tte <- compute_relapse_time(data_rec)
+  cl_stats <- summarize_relapse_by_cluster(df_tte, cluster_col = cluster_col, stat = stat)
+  pred_days <- combine_probs_to_days(probs_named, cl_stats, probs_in_percent = TRUE)
+  pred_date <- if (!is.na(pred_days)) as.Date(surgery_date) + round(pred_days) else as.Date(NA)
+  list(pred_days = pred_days, pred_date = pred_date,
+       probs = probs_named, cluster_stats = cl_stats)
+}
+
+```
+
+```{r}
+# Patient variables (input)
+new_patient <- data.frame(
+  Grado = "Alto",
+  libre_enferm = "No",
+  beta_cateninap = "1",
+  mlh1 = "0",
+  grupo_de_riesgo_definitivo = "Alto",
+  Tributaria_a_Radioterapia = "Si",
+  afectacion_linf = "Si",
+  grado_histologi = "Alto",
+  AP_centinela_pelvico = "pN1",
+  AP_ganPelv = "Macrometastasis",
+  tipo_histologico = "2",
+  stringsAsFactors = FALSE
+)
+
+cluster_columns <- c("Alto riesgo","Buen pronóstico","Mixto")
+
+# Run prediction with chosen surgery date
+pred <- predict_relapse_days(
+  new_patient_df = new_patient,
+  empirical_table = empirical_summary_wide,
+  cluster_cols = cluster_columns,
+  data_rec = data_rec,
+  surgery_date = as.Date(Sys.Date(), format="%d/%m/%Y"),  # input date
+  cluster_col = "cluster_label",
+  stat = "median"
+)
+
+# Format output
+pred_days <- round(pred$pred_days)
+pred_date <- format(pred$pred_date, "%d/%m/%Y")
+
+cat("Predicted days to relapse:", pred_days, "\n")
+cat("Predicted relapse date:", pred_date, "\n")
 
 ```
 
