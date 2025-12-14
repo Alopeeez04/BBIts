@@ -1,0 +1,498 @@
+:root {
+  --color-primary: #5B7BA3;
+  --color-primary-dark: #4A6FA5;
+  --color-primary-light: #7A95B8;
+  --color-secondary: #7A8A9F;
+  --color-secondary-light: #9AA5B5;
+  --color-secondary-dark: #5A6B7F;
+  --color-bg: #FAFAFA;
+  --color-bg-panel: #F5F5F5;
+  --color-bg-sidebar: #F0F0F0;
+  --color-text: #2C2C2C;
+  --color-text-secondary: #5A5A5A;
+  --color-text-muted: #7A7A7A;
+  --color-success: #6B8E6B;
+  --color-info: #6B8FA5;
+  --color-border: #D0D5DC;
+  --color-border-light: #E5E8ED;
+  --bg: #efefef;
+  --title: #2c3e50;
+  --surface: #ffffff;
+}
+
+body, html {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  background-color: var(--color-bg) !important;
+  color: var(--color-text) !important;
+}
+
+* {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+}
+
+h1, h2, h3, h4, h5, h6,
+p, span, div, label,
+.navbar-brand, .navbar-nav,
+.btn, .form-control, .selectize-input,
+.well, .alert,
+table, th, td,
+.dataTables_wrapper,
+.bootstrap-select .filter-option,
+.bootstrap-select .dropdown-toggle {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--color-primary-dark) !important;
+}
+
+.navbar {
+  background-color: var(--color-primary) !important;
+  border-bottom: 1px solid var(--color-border) !important;
+}
+
+.navbar-default {
+  background-color: var(--color-primary) !important;
+  border-color: var(--color-border) !important;
+}
+
+.navbar-default .navbar-brand,
+.navbar-default .navbar-nav > li > a {
+  color: #FFFFFF !important;
+}
+
+.navbar-default .navbar-brand:hover,
+.navbar-default .navbar-nav > li > a:hover {
+  color: #FFFFFF !important;
+  background-color: var(--color-primary-dark) !important;
+}
+
+.navbar-default .navbar-nav > .active > a,
+.navbar-default .navbar-nav > .active > a:hover,
+.navbar-default .navbar-nav > .active > a:focus {
+  background-color: var(--color-primary-dark) !important;
+  color: #FFFFFF !important;
+}
+
+.nav-tabs {
+  border-bottom: 1px solid var(--color-border) !important;
+}
+
+.nav-tabs > li > a {
+  color: var(--color-text-secondary) !important;
+  background-color: var(--color-bg-panel) !important;
+  border: 1px solid var(--color-border) !important;
+  border-bottom-color: transparent !important;
+}
+
+.nav-tabs > li > a:hover {
+  background-color: var(--color-bg) !important;
+  border-color: var(--color-border) var(--color-border) var(--color-border) !important;
+  color: var(--color-text) !important;
+}
+
+.nav-tabs > li.active > a,
+.nav-tabs > li.active > a:hover,
+.nav-tabs > li.active > a:focus {
+  color: var(--color-primary-dark) !important;
+  background-color: var(--color-bg) !important;
+  border: 1px solid var(--color-border) !important;
+  border-bottom-color: transparent !important;
+  font-weight: 500 !important;
+}
+
+.sidebar-panel {
+  width: 380px;
+  min-width: 380px;
+  overflow-y: auto;
+  max-height: calc(100vh - 50px);
+  transition: all 0.3s ease;
+  background-color: var(--color-bg-sidebar) !important;
+}
+
+body.sidebar-collapsed .sidebar-panel {
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  overflow: hidden;
+}
+
+.sidebar-panel .well {
+  background-color: var(--color-bg-panel) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text) !important;
+}
+
+.sidebar-toggle-floating {
+  position: fixed;
+  top: 60px;
+  left: 10px;
+  z-index: 1001;
+  display: none;
+}
+
+body.sidebar-collapsed .sidebar-toggle-floating {
+  display: block;
+}
+
+.btn-primary {
+  background-color: var(--color-primary) !important;
+  border-color: var(--color-primary-dark) !important;
+  color: #FFFFFF !important;
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: var(--color-primary-dark) !important;
+  border-color: var(--color-primary-dark) !important;
+  color: #FFFFFF !important;
+}
+
+.btn-primary:active,
+.btn-primary.active {
+  background-color: var(--color-primary-dark) !important;
+  border-color: var(--color-primary-dark) !important;
+  color: #FFFFFF !important;
+}
+
+.btn-default {
+  background-color: var(--color-bg-panel) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text) !important;
+}
+
+.btn-default:hover,
+.btn-default:focus {
+  background-color: var(--color-secondary-light) !important;
+  border-color: var(--color-secondary) !important;
+  color: var(--color-text) !important;
+}
+
+.btn-default:active,
+.btn-default.active {
+  background-color: var(--color-secondary) !important;
+  border-color: var(--color-secondary-dark) !important;
+  color: var(--color-text) !important;
+}
+
+.btn-success {
+  background-color: var(--color-success) !important;
+  border-color: var(--color-success) !important;
+  color: #FFFFFF !important;
+  font-weight: bold !important;
+}
+
+.btn-success:hover,
+.btn-success:focus {
+  background-color: #5A7A5A !important;
+  border-color: #5A7A5A !important;
+  color: #FFFFFF !important;
+}
+
+.btn-success:active,
+.btn-success.active {
+  background-color: #5A7A5A !important;
+  border-color: #5A7A5A !important;
+  color: #FFFFFF !important;
+}
+
+.btn-group-justified .btn {
+  background-color: var(--color-bg-panel) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text) !important;
+}
+
+.btn-group-justified .btn.active {
+  background-color: var(--color-primary) !important;
+  border-color: var(--color-primary-dark) !important;
+  color: #FFFFFF !important;
+}
+
+.btn-group-justified .btn:hover:not(.active) {
+  background-color: var(--color-bg) !important;
+  border-color: var(--color-secondary) !important;
+}
+
+.form-control,
+.selectize-input {
+  background-color: #FFFFFF !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text) !important;
+}
+
+.form-control:focus,
+.selectize-input.focus {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 0.2rem rgba(91, 123, 163, 0.15) !important;
+}
+
+.variable-selector-panel {
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08) !important;
+  background-color: var(--color-bg-panel) !important;
+  border: 1px solid var(--color-border) !important;
+}
+
+.variable-selector-panel .bootstrap-select {
+  border: 1px solid var(--color-border) !important;
+  border-radius: 4px;
+}
+
+.variable-selector-panel .bootstrap-select:focus {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 0.2rem rgba(91, 123, 163, 0.15) !important;
+}
+
+.alert-success {
+  background-color: rgba(107, 142, 107, 0.1) !important;
+  border-color: var(--color-success) !important;
+  color: var(--color-text) !important;
+}
+
+.alert-info {
+  background-color: rgba(107, 143, 165, 0.1) !important;
+  border-color: var(--color-info) !important;
+  color: var(--color-text) !important;
+}
+
+.well {
+  background-color: var(--color-bg-panel) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text) !important;
+}
+
+.dataTables_wrapper {
+  width: 100% !important;
+  overflow-x: auto !important;
+  color: var(--color-text) !important;
+}
+
+table.dataTable {
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+}
+
+table.dataTable thead th {
+  background-color: var(--color-bg-panel) !important;
+  border-bottom: 2px solid var(--color-border) !important;
+  border-right: 1px solid var(--color-border-light) !important;
+  color: var(--color-text) !important;
+  font-weight: 500 !important;
+}
+
+table.dataTable thead th:last-child {
+  border-right: none !important;
+}
+
+table.dataTable tbody td {
+  border-bottom: 1px solid var(--color-border-light) !important;
+  border-right: 1px solid var(--color-border-light) !important;
+  color: var(--color-text) !important;
+}
+
+table.dataTable tbody td:last-child {
+  border-right: none !important;
+}
+
+table.dataTable tbody tr:hover {
+  background-color: var(--color-bg-panel) !important;
+}
+
+table.dataTable thead th,
+table.dataTable tbody td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 300px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+}
+
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter,
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  color: var(--color-text) !important;
+}
+
+.dataTables_wrapper .dataTables_filter input {
+  border-color: var(--color-border) !important;
+}
+
+.dataTables_wrapper .dataTables_filter input:focus {
+  border-color: var(--color-primary) !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+  color: var(--color-text) !important;
+  border-color: var(--color-border) !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+  background-color: var(--color-bg-panel) !important;
+  border-color: var(--color-secondary) !important;
+  color: var(--color-text) !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+  background-color: var(--color-primary) !important;
+  border-color: var(--color-primary-dark) !important;
+  color: #FFFFFF !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
+  background-color: var(--color-primary-dark) !important;
+  color: #FFFFFF !important;
+}
+
+.app-wrapper {
+  display: flex;
+  min-height: calc(100vh - 50px);
+  background-color: var(--color-bg) !important;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--color-bg) !important;
+}
+
+.navbar-wrapper {
+  flex-shrink: 0;
+}
+
+.tab-content-wrapper {
+  flex: 1;
+  overflow: auto;
+  padding: 15px;
+  background-color: var(--bg) !important;
+}
+
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
+  background-color: #FFFFFF !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 4px;
+}
+
+.plot-card {
+  margin-bottom: 15px;
+  background-color: #FFFFFF !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 4px;
+  padding: 15px;
+}
+
+.bootstrap-select .filter-option,
+.bootstrap-select .dropdown-toggle,
+.bootstrap-select .dropdown-menu,
+.selectize-input,
+.selectize-dropdown {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  color: var(--color-text) !important;
+}
+
+.bootstrap-select .dropdown-menu {
+  background-color: #FFFFFF !important;
+  border-color: var(--color-border) !important;
+}
+
+.bootstrap-select .dropdown-menu li a {
+  color: var(--color-text) !important;
+}
+
+.bootstrap-select .dropdown-menu li a:hover {
+  background-color: var(--color-bg-panel) !important;
+  color: var(--color-text) !important;
+}
+
+hr {
+  border-top-color: var(--color-border) !important;
+}
+
+.text-muted {
+  color: var(--color-text-muted) !important;
+}
+
+.cohort-image-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.cohort-image-block {
+  background-color: var(--surface);
+  border-radius: 10px;
+  padding: 15px;
+  text-align: center;
+}
+
+.cohort-image-title {
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
+  font-weight: 600 !important;
+  font-size: 16px !important;
+  color: var(--title) !important;
+  margin-bottom: 10px;
+}
+
+.cohort-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+}
+
+.variable-selector-container {
+  margin-top: 15px;
+  margin-bottom: 15px;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 4px;
+  background-color: var(--color-bg-panel) !important;
+  padding: 10px;
+}
+
+.variable-selector-scrollable {
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 5px;
+}
+
+.variable-selector-scrollable::-webkit-scrollbar {
+  width: 6px;
+}
+
+.variable-selector-scrollable::-webkit-scrollbar-track {
+  background: var(--color-bg);
+  border-radius: 3px;
+}
+
+.variable-selector-scrollable::-webkit-scrollbar-thumb {
+  background: var(--color-secondary);
+  border-radius: 3px;
+}
+
+.variable-selector-scrollable::-webkit-scrollbar-thumb:hover {
+  background: var(--color-secondary-dark);
+}
+
+.variable-selector-header {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border) !important;
+}
+
+.pretty-checkbox-group {
+  margin-top: 5px;
+}
+
+.pretty-checkbox-group label {
+  color: var(--color-text) !important;
+  font-size: 13px;
+  margin-bottom: 5px;
+}
