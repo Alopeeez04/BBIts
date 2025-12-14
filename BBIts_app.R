@@ -45,6 +45,8 @@ ui <- fluidPage(
                   choices = c('Negativo','Cels_aisladas','Macrometastasis')),
       selectInput('tipo_histologico_in','Tipo histológico', 
                   choices = c('1','2','3','4','5','7','8','9','10','12','88')),
+      dateInput("surgery_date", "Data de la cirurgia", 
+                value = Sys.Date(), format = "dd/mm/yyyy"),
       actionButton("predict_btn", "Calcular probabilitat")
     ),
     mainPanel(
@@ -75,12 +77,60 @@ server <- function(input, output, session) {
   observeEvent(input$sheet, {
     req(input$file, input$sheet)
     df <- read_excel(input$file$datapath, sheet = input$sheet)
-    rv$data <- as.data.frame(df)
+    df <- as.data.frame(df)
     
-    # Aquí deberías construir empirical_summary_wide a partir de rv$data
-    # Por simplicidad asumimos que ya lo tienes preparado en tu entorno
-    rv$empirical_table <- empirical_summary_wide
+    # --- replicate your pipeline steps here ---
+    # Select numeric variables for PCA
+    numeric_vars <- df %>%
+      dplyr::select(where(is.numeric)) %>%
+      na.omit()
+    
+    numeric_scaled <- scale(numeric_vars)
+    
+    # PCA
+    pca_res <- prcomp(numeric_scaled, center = TRUE, scale. = TRUE)
+    
+    # K-means clustering on first 2 PCs
+    set.seed(123)
+    pca_scores <- pca_res$x[,1:2]
+    km_res <- kmeans(pca_scores, centers = 3, nstart = 25)
+    
+    clusters_full <- km_res$cluster
+    
+    # Add cluster and cluster_label to df
+    df <- df %>%
+      mutate(cluster = factor(clusters_full),
+             cluster_label = case_when(
+               cluster == 1 ~ "Buen pronóstico",
+               cluster == 2 ~ "Alto riesgo",
+               cluster == 3 ~ "Mixto"
+             ))
+    
+    rv$data <- df
+    
+    # Build empirical_summary_wide from df (as in your pipeline)
+    vars_sig <- c("Grado","libre_enferm","beta_cateninap","mlh1",
+                  "grupo_de_riesgo_definitivo","Tributaria_a_Radioterapia",
+                  "afectacion_linf","grado_histologi","AP_centinela_pelvico",
+                  "AP_ganPelv","tipo_histologico")
+    
+    empirical_results <- list()
+    for (var in vars_sig) {
+      tmp <- df %>%
+        group_by(.data[[var]], cluster_label) %>%
+        summarise(n = n(), .groups = "drop") %>%
+        group_by(.data[[var]]) %>%
+        mutate(prob = round(100 * n / sum(n), 1),
+               variable = var,
+               value = as.character(.data[[var]])) %>%
+        dplyr::select(variable, value, cluster_label, prob)
+      empirical_results[[var]] <- tmp
+    }
+    empirical_summary <- bind_rows(empirical_results)
+    rv$empirical_table <- empirical_summary %>%
+      tidyr::pivot_wider(names_from = cluster_label, values_from = prob)
   })
+  
   
   output$table <- renderDT({
     if(is.null(rv$data)){
@@ -125,23 +175,114 @@ server <- function(input, output, session) {
   
   # Función para calcular probabilidades de cluster
   score_new_patient <- function(new_patient, empirical_table, cluster_cols) {
+    
+    # Ensure input is one-row dataframe
+    stopifnot(nrow(new_patient) == 1)
+    
     scores <- empirical_table %>%
-      filter(variable %in% names(new_patient)) %>%
+      filter(
+        variable %in% names(new_patient)
+      ) %>%
       rowwise() %>%
-      mutate(match = as.character(new_patient[[variable]]) == value) %>%
+      mutate(
+        match = as.character(new_patient[[variable]]) == value
+      ) %>%
       ungroup() %>%
       filter(match)
     
+    # Aggregate cluster probabilities
     result <- scores %>%
-      summarise(across(all_of(cluster_cols), ~ mean(.x, na.rm = TRUE)))
+      summarise(
+        across(all_of(cluster_cols), ~ mean(.x, na.rm = TRUE))
+      )
     
+    # Normalize to 100%
     result <- result %>%
-      mutate(total = rowSums(across(all_of(cluster_cols))),
-             across(all_of(cluster_cols), ~ round(100 * .x / total, 1))) %>%
-      select(-total)
+      mutate(
+        total = rowSums(across(all_of(cluster_cols))),
+        across(all_of(cluster_cols), ~ round(100 * .x / total, 1))
+      )
+    
+    # Drop the helper column safely
+    result$total <- NULL
     
     return(result)
   }
+  
+  # === Add these functions inside server or globally ===
+  compute_relapse_time <- function(data_rec,
+                                   surgery_col = "fecha_qx",
+                                   relapse_flag_col = "dx_recidiva",
+                                   followup_col = "Ultima_fecha",
+                                   date_format_surgery = "%d/%m/%Y") {
+    data_rec %>%
+      mutate(
+        surgery_date  = as.Date(.data[[surgery_col]], format = date_format_surgery),
+        followup_date = as.Date(gsub(" UTC","",.data[[followup_col]])),
+        relapse_event = !is.na(.data[[relapse_flag_col]]) & .data[[relapse_flag_col]] == 1,
+        tte_days = as.numeric(followup_date - surgery_date)
+      )
+  }
+  
+  summarize_relapse_by_cluster <- function(df, cluster_col = "cluster_label",
+                                           stat = c("median","mean")) {
+    stat <- match.arg(stat)
+    df %>%
+      filter(relapse_event, !is.na(.data[[cluster_col]]), !is.na(tte_days), tte_days >= 0) %>%
+      group_by(.data[[cluster_col]]) %>%
+      summarise(
+        n_events = n(),
+        days_median = median(tte_days),
+        days_mean   = mean(tte_days),
+        .groups = "drop"
+      ) %>%
+      mutate(relapse_days = if (stat == "median") days_median else days_mean)
+  }
+  
+  combine_probs_to_days <- function(probs_named, cluster_stats,
+                                    cluster_map = c("Alto riesgo" = "Alto riesgo",
+                                                    "Buen pronóstico" = "Buen pronóstico",
+                                                    "Mixto" = "Mixto"),
+                                    probs_in_percent = TRUE) {
+    p <- probs_named
+    if (probs_in_percent) p <- p / 100
+    combo <- tibble(
+      prob_name   = names(p),
+      prob_value  = as.numeric(p),
+      cluster_lab = unname(cluster_map[prob_name])
+    ) %>%
+      left_join(cluster_stats %>% dplyr::select(cluster_label, relapse_days),
+                by = c("cluster_lab" = "cluster_label")) %>%
+      filter(!is.na(relapse_days), !is.na(prob_value))
+    if (nrow(combo) == 0) return(NA_real_)
+    sum(combo$prob_value * combo$relapse_days) / sum(combo$prob_value)
+  }
+  
+  predict_relapse_days <- function(new_patient_df,
+                                   empirical_table,
+                                   cluster_cols = c("Alto riesgo","Buen pronóstico","Mixto"),
+                                   data_rec,
+                                   surgery_date = Sys.Date(),
+                                   cluster_col = "cluster_label",
+                                   stat = c("median","mean")) {
+    stat <- match.arg(stat)
+    probs_tbl <- score_new_patient(new_patient_df, empirical_table, cluster_cols)
+    if (nrow(probs_tbl) == 0 || anyNA(probs_tbl[cluster_cols])) {
+      return(list(pred_days = NA_real_, pred_date = as.Date(NA)))
+    }
+    probs_named <- c(
+      `Alto riesgo` = probs_tbl$`Alto riesgo`,
+      `Buen pronóstico` = probs_tbl$`Buen pronóstico`,
+      `Mixto` = probs_tbl$Mixto
+    )
+    df_tte <- compute_relapse_time(data_rec)
+    cl_stats <- summarize_relapse_by_cluster(df_tte, cluster_col = cluster_col, stat = stat)
+    pred_days <- combine_probs_to_days(probs_named, cl_stats, probs_in_percent = TRUE)
+    pred_date <- if (!is.na(pred_days)) as.Date(surgery_date) + round(pred_days) else as.Date(NA)
+    list(pred_days = pred_days, pred_date = pred_date,
+         probs = probs_named, cluster_stats = cl_stats)
+  }
+  
   
   # Predicción paciente
   observeEvent(input$predict_btn, {
@@ -162,15 +303,32 @@ server <- function(input, output, session) {
     
     cluster_columns <- c("Alto riesgo","Buen pronóstico","Mixto")
     
-    result <- score_new_patient(new_patient, rv$empirical_table, cluster_columns)
+    pred <- predict_relapse_days(
+      new_patient_df = new_patient,
+      empirical_table = rv$empirical_table,
+      cluster_cols = cluster_columns,
+      data_rec = rv$data,
+      surgery_date = input$surgery_date,   # <-- use chosen date
+      cluster_col = "cluster_label",
+      stat = "median"
+    )
+    
     
     output$prediction_text <- renderPrint({
       cat("Probabilidad de pertenencia a clusters:\n",
           sprintf("Alto riesgo: %.1f%%\nBuen pronóstico: %.1f%%\nMixto: %.1f%%",
-                  result$`Alto riesgo`, result$`Buen pronóstico`, result$Mixto))
+                  pred$probs["Alto riesgo"], pred$probs["Buen pronóstico"], pred$probs["Mixto"]))
+      cat("\n\nPredicción temporal:\n")
+      cat(sprintf("Días estimados hasta recidiva: %s\n",
+                  ifelse(is.na(pred$pred_days), "NA", round(pred$pred_days))))
+      cat(sprintf("Fecha estimada de recidiva: %s\n",
+                  ifelse(is.na(pred$pred_date), "NA", format(pred$pred_date, "%d/%m/%Y"))))
     })
+    
   })
+  
 }
 
 # Run app
 shinyApp(ui, server)
+
